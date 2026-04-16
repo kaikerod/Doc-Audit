@@ -8,11 +8,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
 from .database import engine
 from .routers.documentos import router as documentos_router
+from .routers.exportar import router as exportar_router
 from .routers.uploads import router as uploads_router
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 app.include_router(uploads_router)
 app.include_router(documentos_router)
+app.include_router(exportar_router)
 
 
 @app.get("/", tags=["meta"])
