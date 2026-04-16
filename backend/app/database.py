@@ -1,8 +1,38 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Base declarativa para todos os modelos ORM."""
+
+
+engine: Engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+)
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+    class_=Session,
+)
+
+DbSession = Session
+
+
+def get_db() -> Generator[DbSession, None, None]:
+    """Dependency helper para rotas FastAPI."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
