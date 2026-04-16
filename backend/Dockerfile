@@ -12,6 +12,7 @@ RUN pip install --upgrade pip && \
     pip install -r /tmp/requirements.txt
 
 COPY backend /app/backend
+COPY frontend /app/frontend
 
 EXPOSE 8000
 

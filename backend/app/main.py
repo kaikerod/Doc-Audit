@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -11,6 +16,8 @@ from .database import Base, engine
 from .routers.documentos import router as documentos_router
 from .routers.exportar import router as exportar_router
 from .routers.uploads import router as uploads_router
+
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 app.add_middleware(
@@ -25,6 +32,10 @@ app.include_router(uploads_router)
 app.include_router(documentos_router)
 app.include_router(exportar_router)
 
+if FRONTEND_DIR.exists():
+    app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="frontend-css")
+    app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="frontend-js")
+
 
 @app.on_event("startup")
 def initialize_local_sqlite() -> None:
@@ -32,9 +43,12 @@ def initialize_local_sqlite() -> None:
         Base.metadata.create_all(bind=engine)
 
 
-@app.get("/", tags=["meta"])
-def read_root() -> dict[str, str]:
-    return {"name": settings.app_name, "version": settings.app_version}
+@app.get("/", tags=["meta"], response_model=None)
+def read_root() -> Response:
+    if FRONTEND_DIR.exists():
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+    return JSONResponse({"name": settings.app_name, "version": settings.app_version})
 
 
 @app.get(f"{settings.api_v1_prefix}/health/live", tags=["health"])
