@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+import os
 
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from backend.app.database import Base, DbSession
 from backend.app.models import (  # noqa: F401
