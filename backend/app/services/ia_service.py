@@ -26,6 +26,18 @@ class OpenRouterTimeoutError(IAServiceError):
     """Timeout esgotado apos as retentativas configuradas."""
 
 
+def _build_openrouter_headers() -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {settings.openrouter_api_key}",
+        "Content-Type": "application/json",
+    }
+    if settings.openrouter_referer:
+        headers["HTTP-Referer"] = settings.openrouter_referer
+    if settings.openrouter_title:
+        headers["X-OpenRouter-Title"] = settings.openrouter_title
+    return headers
+
+
 def build_extraction_prompt(document_text: str) -> str:
     fields_text = "\n".join(
         [
@@ -91,6 +103,31 @@ def _extract_json_content(content: str) -> dict[str, Any]:
         raise OpenRouterResponseError("OpenRouter retornou JSON invalido.") from exc
 
 
+def _extract_message_content(content: Any) -> dict[str, Any]:
+    if isinstance(content, str):
+        return _extract_json_content(content)
+
+    if isinstance(content, dict):
+        return content
+
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                text_parts.append(text)
+
+        if text_parts:
+            return _extract_json_content("\n".join(text_parts))
+
+    raise OpenRouterResponseError("Formato de content inesperado retornado pelo OpenRouter.")
+
+
 def _build_request_payload(document_text: str) -> dict[str, Any]:
     return {
         "model": settings.openrouter_model,
@@ -115,12 +152,7 @@ def _parse_openrouter_response(response_json: dict[str, Any]) -> DocumentExtract
     except (KeyError, IndexError, TypeError) as exc:
         raise OpenRouterResponseError("Resposta do OpenRouter nao contem choices validos.") from exc
 
-    if isinstance(content, str):
-        parsed_content = _extract_json_content(content)
-    elif isinstance(content, dict):
-        parsed_content = content
-    else:
-        raise OpenRouterResponseError("Formato de content inesperado retornado pelo OpenRouter.")
+    parsed_content = _extract_message_content(content)
 
     try:
         return DocumentExtractionResult.model_validate(parsed_content)
@@ -132,10 +164,7 @@ def extract_document_data(document_text: str) -> DocumentExtractionResult:
     if not settings.openrouter_api_key:
         raise OpenRouterConfigurationError("OPENROUTER_API_KEY nao configurada.")
 
-    headers = {
-        "Authorization": f"Bearer {settings.openrouter_api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = _build_openrouter_headers()
     payload = _build_request_payload(document_text)
     attempts = settings.openrouter_timeout_retries + 1
 
