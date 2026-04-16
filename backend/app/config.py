@@ -16,6 +16,11 @@ class Settings:
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+    openrouter_api_url: str = os.getenv(
+        "OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions"
+    )
+    openrouter_timeout_seconds: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30"))
+    openrouter_timeout_retries: int = int(os.getenv("OPENROUTER_TIMEOUT_RETRIES", "2"))
 
 
 settings = Settings()
