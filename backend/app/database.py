@@ -13,9 +13,20 @@ class Base(DeclarativeBase):
     """Base declarativa para todos os modelos ORM."""
 
 
+def _engine_kwargs() -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "pool_pre_ping": True,
+    }
+
+    if settings.database_url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+
+    return kwargs
+
+
 engine: Engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,
+    **_engine_kwargs(),
 )
 
 SessionLocal = sessionmaker(

@@ -18,6 +18,7 @@
   function init() {
     var tableController = root.DocAuditTable.createTableController({
       initialDocuments: [],
+      dashboardGrid: document.getElementById("dashboard-grid"),
       tableBody: document.getElementById("results-table-body"),
       emptyState: document.getElementById("results-empty-state"),
       searchInput: document.getElementById("document-search-input"),
@@ -44,6 +45,13 @@
       onUploadSuccess: async function () {
         await loadDocuments(tableController);
       }
+    });
+
+    root.DocAuditExport.createExportController({
+      button: document.getElementById("export-button"),
+      formatSelect: document.getElementById("export-format-select"),
+      anomaliesOnly: document.getElementById("export-anomalies-only"),
+      feedbackNode: document.getElementById("export-feedback")
     });
 
     document.getElementById("detail-close-button").addEventListener("click", function () {

@@ -1,4 +1,5 @@
 const {
+  buildExportPath,
   buildDashboardStats,
   filterDocuments,
   formatCurrencyBRL,
@@ -29,6 +30,22 @@ describe("DocAudit UI logic", () => {
       critical: 1,
       processing: 1
     });
+  });
+
+  test("buildExportPath monta a rota de exportacao com filtro opcional", () => {
+    expect(
+      buildExportPath({
+        format: "excel",
+        onlyAnomalies: true
+      })
+    ).toBe("/api/v1/exportar/excel?somente_com_anomalias=true");
+
+    expect(
+      buildExportPath({
+        format: "csv",
+        onlyAnomalies: false
+      })
+    ).toBe("/api/v1/exportar/csv");
   });
 
   test("filterDocuments aplica busca, status e severidade", () => {

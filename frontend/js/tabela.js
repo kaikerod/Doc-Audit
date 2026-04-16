@@ -23,10 +23,16 @@
 
   function renderDetail(document, elements) {
     if (!document) {
+      if (elements.layout) {
+        elements.layout.classList.remove("dashboard-grid--detail-open");
+      }
       elements.panel.classList.add("is-hidden");
       return;
     }
 
+    if (elements.layout) {
+      elements.layout.classList.add("dashboard-grid--detail-open");
+    }
     elements.panel.classList.remove("is-hidden");
     elements.title.textContent = document.nomeArquivo;
     elements.metadata.innerHTML = [
@@ -81,12 +87,14 @@
       searchInput: options.searchInput,
       statusFilter: options.statusFilter,
       severityFilter: options.severityFilter,
+      layout: options.dashboardGrid,
       stats: options.stats,
       detailPanel: {
         panel: options.detailPanel,
         title: options.detailTitle,
         metadata: options.detailMetadata,
-        flags: options.detailFlags
+        flags: options.detailFlags,
+        layout: options.dashboardGrid
       }
     };
 
@@ -111,11 +119,17 @@
       elements.body.innerHTML = visibleDocuments
         .map(function (document) {
           var statusMeta = root.DocAuditUiLogic.getStatusMeta(document.status, document.flags);
+          var isSelected = document.id === state.selectedDocumentId;
+          var rowClassName = isSelected ? ' class="is-selected"' : "";
 
           return (
             '<tr data-document-id="' +
             root.DocAuditUiLogic.escapeHtml(document.id) +
-            '">' +
+            '" tabindex="0" aria-selected="' +
+            (isSelected ? "true" : "false") +
+            '"' +
+            rowClassName +
+            ">" +
             "<td>" +
             '<div class="cell-primary">' +
             "<strong>" +
@@ -184,6 +198,19 @@
 
         state.selectedDocumentId = row.dataset.documentId;
         render();
+      });
+
+      elements.body.addEventListener("keydown", function (event) {
+        var row = event.target.closest("tr[data-document-id]");
+        if (!row) {
+          return;
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          state.selectedDocumentId = row.dataset.documentId;
+          render();
+        }
       });
     }
 

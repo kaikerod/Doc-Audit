@@ -23,12 +23,14 @@
         </div>
       </header>
 
-      <main class="dashboard-grid">
+      <main id="dashboard-grid" class="dashboard-grid">
         <section class="panel upload-panel">
           <div class="panel__header">
             <div>
-              <p class="panel__eyebrow">Modulo 4.1</p>
               <h2>Upload de arquivos TXT</h2>
+              <p class="panel__lead">
+                Envie lotes de documentos fiscais e acompanhe o processamento em um fluxo unico.
+              </p>
             </div>
             <p class="panel__hint">Maximo de 20 arquivos por envio, ate 5 MB cada.</p>
           </div>
@@ -43,6 +45,12 @@
               Selecionar arquivos
             </button>
             <input id="upload-file-input" type="file" accept=".txt,text/plain" multiple hidden />
+          </div>
+
+          <div class="upload-panel__meta" aria-label="Regras de upload">
+            <span class="meta-pill">TXT apenas</span>
+            <span class="meta-pill">Batch com 20 arquivos</span>
+            <span class="meta-pill">5 MB por item</span>
           </div>
 
           <div class="upload-panel__footer">
@@ -76,39 +84,86 @@
         </section>
 
         <section class="panel table-panel">
-          <div class="panel__header panel__header--stack">
-            <div>
-              <p class="panel__eyebrow">Modulo 4.4</p>
-              <h2>Painel de resultados</h2>
+          <div class="panel__header panel__header--stack table-panel__header">
+            <div class="table-panel__intro">
+              <div>
+                <h2>Painel de resultados</h2>
+                <p class="panel__lead">
+                  Use os filtros para refinar a mesa de auditoria, abra uma linha para ver detalhes e exporte o recorte desejado.
+                </p>
+              </div>
+              <div class="table-panel__callout">
+                <strong>Leitura rapida</strong>
+                <p>Selecione uma linha da tabela para abrir o painel lateral com o contexto completo do documento.</p>
+              </div>
             </div>
             <div class="toolbar">
-              <label class="toolbar__field">
-                <span>Buscar</span>
-                <input id="document-search-input" type="search" placeholder="Arquivo ou numero da NF" />
-              </label>
-              <label class="toolbar__field">
-                <span>Status</span>
-                <select id="document-status-filter">
-                  <option value="todos">Todos</option>
-                  <option value="com_anomalia">Com anomalia</option>
-                  <option value="sem_anomalia">Sem anomalia</option>
-                  <option value="processando">Processando</option>
-                  <option value="erro">Erro</option>
-                </select>
-              </label>
-              <label class="toolbar__field">
-                <span>Severidade</span>
-                <select id="document-severity-filter">
-                  <option value="todas">Todas</option>
-                  <option value="CRITICA">Critica</option>
-                  <option value="ALTA">Alta</option>
-                  <option value="MEDIA">Media</option>
-                </select>
-              </label>
+              <div class="toolbar__cluster toolbar__cluster--filters">
+                <div class="toolbar__cluster-head">
+                  <span class="toolbar__cluster-eyebrow">Filtros</span>
+                  <p>Refine a mesa por arquivo, status ou severidade das flags.</p>
+                </div>
+                <div class="toolbar__grid">
+                  <label class="toolbar__field toolbar__field--search">
+                    <span>Buscar</span>
+                    <input id="document-search-input" type="search" placeholder="Arquivo ou numero da NF" />
+                  </label>
+                  <label class="toolbar__field">
+                    <span>Status</span>
+                    <select id="document-status-filter">
+                      <option value="todos">Todos</option>
+                      <option value="com_anomalia">Com anomalia</option>
+                      <option value="sem_anomalia">Sem anomalia</option>
+                      <option value="processando">Processando</option>
+                      <option value="erro">Erro</option>
+                    </select>
+                  </label>
+                  <label class="toolbar__field">
+                    <span>Severidade</span>
+                    <select id="document-severity-filter">
+                      <option value="todas">Todas</option>
+                      <option value="CRITICA">Critica</option>
+                      <option value="ALTA">Alta</option>
+                      <option value="MEDIA">Media</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+              <div class="toolbar__cluster toolbar__cluster--actions">
+                <div class="toolbar__cluster-head">
+                  <span class="toolbar__cluster-eyebrow">Exportacao</span>
+                  <p>Baixe um recorte em Excel ou CSV para seguir a analise fora da tela.</p>
+                </div>
+                <div class="toolbar__actions">
+                  <label class="toolbar__field toolbar__field--compact">
+                    <span>Formato</span>
+                    <select id="export-format-select">
+                      <option value="excel">Excel</option>
+                      <option value="csv">CSV</option>
+                    </select>
+                  </label>
+                  <label class="toolbar__toggle" for="export-anomalies-only">
+                    <input id="export-anomalies-only" type="checkbox" />
+                    <span>Somente com anomalias</span>
+                  </label>
+                  <button id="export-button" type="button" class="button button--primary">
+                    Exportar
+                  </button>
+                </div>
+                <p id="export-feedback" class="feedback table-panel__feedback">
+                  Exporte os resultados em CSV ou Excel.
+                </p>
+              </div>
             </div>
           </div>
 
           <div class="table-shell">
+            <div class="table-shell__header">
+              <div>
+                <strong>Resultados consolidados</strong>
+                <p>A tabela destaca o contexto principal do documento e as flags encontradas em cada registro.</p>
+              </div>
+            </div>
             <table class="results-table">
               <thead>
                 <tr>
@@ -153,6 +208,7 @@
     <script src="js/ui-logic.js"></script>
     <script src="js/api.js"></script>
     <script src="js/upload.js"></script>
+    <script src="js/export.js"></script>
     <script src="js/tabela.js"></script>
     <script src="js/app.js"></script>
   </body>

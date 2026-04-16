@@ -156,6 +156,18 @@
     );
   }
 
+  function buildExportPath(options) {
+    var safeOptions = options || {};
+    var format = normalizeKeyword(safeOptions.format) === "excel" ? "excel" : "csv";
+    var basePath = "/api/v1/exportar/" + format;
+
+    if (safeOptions.onlyAnomalies) {
+      return basePath + "?somente_com_anomalias=true";
+    }
+
+    return basePath;
+  }
+
   function matchesDocumentSearch(document, query) {
     var normalizedQuery = normalizeKeyword(query);
     if (!normalizedQuery) {
@@ -283,6 +295,7 @@
   }
 
   return {
+    buildExportPath: buildExportPath,
     buildDashboardStats: buildDashboardStats,
     escapeHtml: escapeHtml,
     filterDocuments: filterDocuments,
