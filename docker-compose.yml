@@ -1,0 +1,61 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: docaudit-web
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_NAME: ${APP_NAME:-DocAudit}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://docaudit:docaudit@db:5432/docaudit}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: docaudit-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-docaudit}
+      POSTGRES_USER: ${POSTGRES_USER:-docaudit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docaudit}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docaudit} -d ${POSTGRES_DB:-docaudit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: docaudit-redis
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
