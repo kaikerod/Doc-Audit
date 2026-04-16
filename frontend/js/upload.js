@@ -9,7 +9,7 @@
     var fileInput = options.fileInput;
     var browseButton = options.browseButton;
     var feedbackNode = options.feedbackNode;
-    var onUploadsCreated = options.onUploadsCreated;
+    var onUploadSuccess = options.onUploadSuccess;
     var maxSizeBytes = options.maxSizeBytes || (5 * 1024 * 1024);
 
     async function handleFiles(fileList) {
@@ -33,8 +33,9 @@
 
       try {
         var payload = await root.DocAuditApi.uploadTxtFiles(files);
-        var mappedDocuments = root.DocAuditUiLogic.mapUploadItemsToDocuments(payload.items);
-        onUploadsCreated(mappedDocuments);
+        if (typeof onUploadSuccess === "function") {
+          await onUploadSuccess(payload);
+        }
         setFeedback(feedbackNode, "Upload concluido. Processamento em andamento.", "success");
         fileInput.value = "";
       } catch (error) {

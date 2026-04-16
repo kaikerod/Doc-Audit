@@ -157,6 +157,19 @@
       render();
     }
 
+    function setDocuments(documents) {
+      state.documents = Array.isArray(documents) ? documents : [];
+      if (
+        state.selectedDocumentId &&
+        !state.documents.some(function (document) {
+          return document.id === state.selectedDocumentId;
+        })
+      ) {
+        state.selectedDocumentId = null;
+      }
+      render();
+    }
+
     function bindEvents() {
       [elements.searchInput, elements.statusFilter, elements.severityFilter].forEach(function (element) {
         element.addEventListener("input", render);
@@ -179,7 +192,8 @@
 
     return {
       prependDocuments: prependDocuments,
-      render: render
+      render: render,
+      setDocuments: setDocuments
     };
   }
 

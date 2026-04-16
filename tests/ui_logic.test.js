@@ -3,6 +3,7 @@ const {
   filterDocuments,
   formatCurrencyBRL,
   getSeverityBadgeClass,
+  mapApiDocumentToViewModel,
   validateUploadFile
 } = require("../frontend/js/ui-logic.js");
 
@@ -65,6 +66,42 @@ describe("DocAudit UI logic", () => {
     expect(result).toEqual({
       valid: false,
       reason: "Apenas arquivos .txt sao permitidos."
+    });
+  });
+
+  test("mapApiDocumentToViewModel converte o payload da API para o formato da tabela", () => {
+    const mapped = mapApiDocumentToViewModel({
+      id: "doc-1",
+      upload_id: "upload-1",
+      documento_id: "doc-1",
+      nome_arquivo: "nf-real.txt",
+      numero_nf: "NF-2026-500",
+      cnpj_emitente: "11.222.333/0001-81",
+      data_emissao: "2026-04-15",
+      data_pagamento: "2026-04-16",
+      valor_total: 2500.1,
+      aprovador: "Maria Silva",
+      descricao: "Servico",
+      status: "concluído",
+      resumo: "Processamento concluido sem anomalias.",
+      flags: []
+    });
+
+    expect(mapped).toEqual({
+      id: "doc-1",
+      uploadId: "upload-1",
+      documentoId: "doc-1",
+      nomeArquivo: "nf-real.txt",
+      numeroNF: "NF-2026-500",
+      cnpjEmitente: "11.222.333/0001-81",
+      dataNF: "2026-04-15",
+      dataPagamento: "2026-04-16",
+      valor: 2500.1,
+      aprovador: "Maria Silva",
+      descricao: "Servico",
+      status: "concluído",
+      resumo: "Processamento concluido sem anomalias.",
+      flags: []
     });
   });
 });

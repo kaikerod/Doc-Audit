@@ -35,7 +35,17 @@
     return response.json();
   }
 
+  async function fetchDocuments() {
+    const response = await fetch("/api/v1/documentos");
+    if (!response.ok) {
+      throw new Error("Nao foi possivel carregar os documentos do dashboard.");
+    }
+
+    return response.json();
+  }
+
   root.DocAuditApi = {
+    fetchDocuments: fetchDocuments,
     fetchApiHealth: fetchApiHealth,
     uploadTxtFiles: uploadTxtFiles
   };

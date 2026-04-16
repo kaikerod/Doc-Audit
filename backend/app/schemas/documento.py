@@ -63,3 +63,33 @@ class DocumentExtractionResult(BaseModel):
         data.setdefault("confiancas", {})
         data.setdefault("extraction_failed_fields", [])
         return data
+
+
+class DocumentoAnomaliaRead(BaseModel):
+    codigo: str
+    descricao: str
+    severidade: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentoListItem(BaseModel):
+    id: str
+    upload_id: str
+    documento_id: str | None = None
+    nome_arquivo: str
+    numero_nf: str | None = None
+    cnpj_emitente: str | None = None
+    data_emissao: date | None = None
+    data_pagamento: date | None = None
+    valor_total: Decimal | None = None
+    aprovador: str | None = None
+    descricao: str | None = None
+    status: str
+    resumo: str
+    flags: list[DocumentoAnomaliaRead] = Field(default_factory=list)
+
+
+class DocumentoListResponse(BaseModel):
+    total: int
+    items: list[DocumentoListItem]

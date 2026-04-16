@@ -75,6 +75,13 @@
     var normalizedStatus = normalizeKeyword(status);
     var hasFlags = Array.isArray(flags) && flags.length > 0;
 
+    if (normalizedStatus === "pendente") {
+      return {
+        label: "Pendente",
+        className: "badge badge--status badge--status-processing"
+      };
+    }
+
     if (normalizedStatus === "processando") {
       return {
         label: "Processando",
@@ -134,7 +141,7 @@
           stats.critical += 1;
         }
 
-        if (normalizeKeyword(document.status) === "processando") {
+        if (["processando", "pendente"].includes(normalizeKeyword(document.status))) {
           stats.processing += 1;
         }
 
@@ -181,7 +188,7 @@
         return false;
       }
 
-      if (statusFilter === "processando" && normalizedStatus !== "processando") {
+      if (statusFilter === "processando" && !["processando", "pendente"].includes(normalizedStatus)) {
         return false;
       }
 
@@ -252,6 +259,29 @@
     });
   }
 
+  function mapApiDocumentToViewModel(item) {
+    return {
+      id: item.id,
+      uploadId: item.upload_id,
+      documentoId: item.documento_id,
+      nomeArquivo: item.nome_arquivo,
+      numeroNF: item.numero_nf || "--",
+      cnpjEmitente: item.cnpj_emitente || "--",
+      dataNF: item.data_emissao,
+      dataPagamento: item.data_pagamento,
+      valor: item.valor_total,
+      aprovador: item.aprovador || "--",
+      descricao: item.descricao || "",
+      status: item.status,
+      resumo: item.resumo || "Documento monitorado no dashboard.",
+      flags: Array.isArray(item.flags) ? item.flags : []
+    };
+  }
+
+  function mapApiDocumentsToViewModels(items) {
+    return (items || []).map(mapApiDocumentToViewModel);
+  }
+
   return {
     buildDashboardStats: buildDashboardStats,
     escapeHtml: escapeHtml,
@@ -260,6 +290,8 @@
     formatDateBR: formatDateBR,
     getSeverityBadgeClass: getSeverityBadgeClass,
     getStatusMeta: getStatusMeta,
+    mapApiDocumentToViewModel: mapApiDocumentToViewModel,
+    mapApiDocumentsToViewModels: mapApiDocumentsToViewModels,
     mapUploadItemsToDocuments: mapUploadItemsToDocuments,
     matchesDocumentSearch: matchesDocumentSearch,
     normalizeKeyword: normalizeKeyword,
