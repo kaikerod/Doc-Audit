@@ -1,0 +1,10 @@
+{
+  "name": "docaudit",
+  "private": true,
+  "scripts": {
+    "test:ui": "jest tests/ui_logic.test.js --runInBand"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

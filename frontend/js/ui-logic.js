@@ -1,0 +1,269 @@
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) {
+    module.exports = factory();
+  } else {
+    root.DocAuditUiLogic = factory();
+  }
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  var currencyFormatter = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  });
+
+  function normalizeKeyword(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function formatCurrencyBRL(value) {
+    if (value === null || value === undefined || value === "") {
+      return "--";
+    }
+
+    var numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+      return "--";
+    }
+
+    return currencyFormatter.format(numericValue).replace(/\u00a0/g, " ");
+  }
+
+  function formatDateBR(value) {
+    if (!value) {
+      return "--";
+    }
+
+    var normalizedValue = value;
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      normalizedValue = value + "T00:00:00Z";
+    }
+
+    var date = value instanceof Date ? value : new Date(normalizedValue);
+    if (Number.isNaN(date.getTime())) {
+      return "--";
+    }
+
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "UTC"
+    }).format(date);
+  }
+
+  function getSeverityBadgeClass(severity) {
+    switch (normalizeKeyword(severity)) {
+      case "critica":
+        return "badge badge--critical";
+      case "alta":
+        return "badge badge--high";
+      default:
+        return "badge badge--medium";
+    }
+  }
+
+  function getStatusMeta(status, flags) {
+    var normalizedStatus = normalizeKeyword(status);
+    var hasFlags = Array.isArray(flags) && flags.length > 0;
+
+    if (normalizedStatus === "processando") {
+      return {
+        label: "Processando",
+        className: "badge badge--status badge--status-processing"
+      };
+    }
+
+    if (normalizedStatus === "erro") {
+      return {
+        label: "Erro",
+        className: "badge badge--status badge--status-error"
+      };
+    }
+
+    if (hasFlags) {
+      return {
+        label: "Concluido com flags",
+        className: "badge badge--status badge--status-alert"
+      };
+    }
+
+    return {
+      label: "Concluido",
+      className: "badge badge--status badge--status-success"
+    };
+  }
+
+  function summarizeFlags(flags) {
+    if (!Array.isArray(flags) || flags.length === 0) {
+      return "Sem flags";
+    }
+
+    return flags
+      .map(function (flag) {
+        return flag.codigo;
+      })
+      .join(", ");
+  }
+
+  function buildDashboardStats(documents) {
+    var safeDocuments = Array.isArray(documents) ? documents : [];
+
+    return safeDocuments.reduce(
+      function (stats, document) {
+        stats.total += 1;
+
+        if (Array.isArray(document.flags) && document.flags.length > 0) {
+          stats.withFlags += 1;
+        }
+
+        if (
+          Array.isArray(document.flags) &&
+          document.flags.some(function (flag) {
+            return normalizeKeyword(flag.severidade) === "critica";
+          })
+        ) {
+          stats.critical += 1;
+        }
+
+        if (normalizeKeyword(document.status) === "processando") {
+          stats.processing += 1;
+        }
+
+        return stats;
+      },
+      {
+        total: 0,
+        withFlags: 0,
+        critical: 0,
+        processing: 0
+      }
+    );
+  }
+
+  function matchesDocumentSearch(document, query) {
+    var normalizedQuery = normalizeKeyword(query);
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return normalizeKeyword(document.nomeArquivo).includes(normalizedQuery) ||
+      normalizeKeyword(document.numeroNF).includes(normalizedQuery);
+  }
+
+  function filterDocuments(documents, filters) {
+    var safeDocuments = Array.isArray(documents) ? documents : [];
+    var safeFilters = filters || {};
+    var statusFilter = normalizeKeyword(safeFilters.status || "todos");
+    var severityFilter = normalizeKeyword(safeFilters.severity || "todas");
+
+    return safeDocuments.filter(function (document) {
+      if (!matchesDocumentSearch(document, safeFilters.query || "")) {
+        return false;
+      }
+
+      var hasFlags = Array.isArray(document.flags) && document.flags.length > 0;
+      var normalizedStatus = normalizeKeyword(document.status);
+
+      if (statusFilter === "com_anomalia" && !hasFlags) {
+        return false;
+      }
+
+      if (statusFilter === "sem_anomalia" && hasFlags) {
+        return false;
+      }
+
+      if (statusFilter === "processando" && normalizedStatus !== "processando") {
+        return false;
+      }
+
+      if (statusFilter === "erro" && normalizedStatus !== "erro") {
+        return false;
+      }
+
+      if (
+        severityFilter !== "todas" &&
+        !document.flags.some(function (flag) {
+          return normalizeKeyword(flag.severidade) === severityFilter;
+        })
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  function validateUploadFile(file, maxSizeBytes) {
+    var fileName = file && file.name ? file.name : "";
+    var normalizedName = normalizeKeyword(fileName);
+    var hasTxtExtension = normalizedName.endsWith(".txt");
+
+    if (!hasTxtExtension) {
+      return {
+        valid: false,
+        reason: "Apenas arquivos .txt sao permitidos."
+      };
+    }
+
+    if (!file.size) {
+      return {
+        valid: false,
+        reason: "Arquivos vazios nao sao permitidos."
+      };
+    }
+
+    if (file.size > maxSizeBytes) {
+      return {
+        valid: false,
+        reason: "Arquivo excede o limite permitido."
+      };
+    }
+
+    return {
+      valid: true,
+      reason: ""
+    };
+  }
+
+  function mapUploadItemsToDocuments(items) {
+    return (items || []).map(function (item) {
+      return {
+        id: item.id,
+        nomeArquivo: item.nome_arquivo,
+        numeroNF: "--",
+        cnpjEmitente: "--",
+        dataNF: null,
+        dataPagamento: null,
+        valor: null,
+        aprovador: "--",
+        status: item.status || "processando",
+        flags: [],
+        resumo: "Upload recebido e aguardando o pipeline de IA."
+      };
+    });
+  }
+
+  return {
+    buildDashboardStats: buildDashboardStats,
+    escapeHtml: escapeHtml,
+    filterDocuments: filterDocuments,
+    formatCurrencyBRL: formatCurrencyBRL,
+    formatDateBR: formatDateBR,
+    getSeverityBadgeClass: getSeverityBadgeClass,
+    getStatusMeta: getStatusMeta,
+    mapUploadItemsToDocuments: mapUploadItemsToDocuments,
+    matchesDocumentSearch: matchesDocumentSearch,
+    normalizeKeyword: normalizeKeyword,
+    summarizeFlags: summarizeFlags,
+    validateUploadFile: validateUploadFile
+  };
+});
