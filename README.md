@@ -195,30 +195,6 @@ docker compose exec web alembic upgrade head
 
 ---
 
-### Rodando sem Docker (desenvolvimento)
-
-```bash
-# 1. Crie e ative o ambiente virtual
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
-
-# 2. Instale as dependências
-pip install -r backend/requirements.txt
-
-# 3. Configure o .env para usar SQLite (sem precisar do Postgres)
-# No .env, comente a linha DATABASE_URL do Postgres e use:
-# DATABASE_URL=sqlite+pysqlite:///./docaudit.db
-
-# 4. Suba o servidor FastAPI
-uvicorn backend.app.main:app --reload
-
-# 5. (Opcional) Suba o worker Celery para processamento assíncrono
-celery -A backend.app.workers.tasks worker --loglevel=info
-```
-
----
-
 ## 🌐 Endpoints da API
 
 ### Uploads
@@ -545,30 +521,6 @@ docker compose exec web alembic upgrade head
 | API Docs (Swagger UI) | `http://localhost:8000/docs` |
 | API Docs (ReDoc) | `http://localhost:8000/redoc` |
 | Health Check | `http://localhost:8000/api/v1/health` |
-
----
-
-### Running without Docker (development)
-
-```bash
-# 1. Create and activate a virtual environment
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
-
-# 2. Install dependencies
-pip install -r backend/requirements.txt
-
-# 3. Configure .env to use SQLite (no Postgres needed)
-# In .env, comment out the Postgres DATABASE_URL and use:
-# DATABASE_URL=sqlite+pysqlite:///./docaudit.db
-
-# 4. Start the FastAPI server
-uvicorn backend.app.main:app --reload
-
-# 5. (Optional) Start the Celery worker for async processing
-celery -A backend.app.workers.tasks worker --loglevel=info
-```
 
 ---
 
