@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -15,8 +17,30 @@ from ..schemas.documento import DocumentoAnomaliaRead, DocumentoListItem, Docume
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/documentos", tags=["documentos"])
 
 
-def _build_summary(status: str, flags: list[DocumentoAnomaliaRead]) -> str:
-    normalized_status = status.casefold()
+def _normalize_status(status: Any, default: str = "pendente") -> str:
+    if not isinstance(status, str):
+        return default
+
+    normalized = status.strip()
+    return normalized or default
+
+
+def _normalize_filename(filename: Any) -> str:
+    if not isinstance(filename, str):
+        return "arquivo_sem_nome.txt"
+
+    normalized = filename.strip()
+    return normalized or "arquivo_sem_nome.txt"
+
+
+def _datetime_sort_key(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return ""
+
+
+def _build_summary(status: Any, flags: list[DocumentoAnomaliaRead]) -> str:
+    normalized_status = _normalize_status(status).casefold()
     if normalized_status == "erro":
         return "Processamento interrompido com erro."
     if normalized_status in {"pendente", "processando"}:
@@ -29,35 +53,49 @@ def _build_summary(status: str, flags: list[DocumentoAnomaliaRead]) -> str:
 def _select_latest_document(upload: Upload) -> Documento | None:
     if not upload.documentos:
         return None
-    return max(upload.documentos, key=lambda documento: documento.criado_em or datetime.min)
+    return max(upload.documentos, key=lambda documento: _datetime_sort_key(documento.criado_em))
+
+
+def _map_document_flags(documento: Documento) -> list[DocumentoAnomaliaRead]:
+    flags: list[DocumentoAnomaliaRead] = []
+    ordered_anomalies = sorted(
+        documento.anomalias,
+        key=lambda item: _datetime_sort_key(item.criado_em),
+    )
+
+    for anomalia in ordered_anomalies:
+        try:
+            flags.append(DocumentoAnomaliaRead.model_validate(anomalia))
+        except ValidationError:
+            continue
+
+    return flags
 
 
 def _map_upload_to_list_item(upload: Upload) -> DocumentoListItem:
     documento = _select_latest_document(upload)
 
     if documento is None:
-        status = upload.status
+        status = _normalize_status(upload.status)
         flags: list[DocumentoAnomaliaRead] = []
         return DocumentoListItem(
             id=str(upload.id),
             upload_id=str(upload.id),
             documento_id=None,
-            nome_arquivo=upload.nome_arquivo,
+            nome_arquivo=_normalize_filename(upload.nome_arquivo),
             status=status,
             resumo=_build_summary(status, flags),
             flags=flags,
         )
 
-    flags = [
-        DocumentoAnomaliaRead.model_validate(anomalia)
-        for anomalia in sorted(documento.anomalias, key=lambda item: item.criado_em or datetime.min)
-    ]
+    flags = _map_document_flags(documento)
+    status = _normalize_status(documento.status_extracao)
 
     return DocumentoListItem(
         id=str(documento.id),
         upload_id=str(upload.id),
         documento_id=str(documento.id),
-        nome_arquivo=upload.nome_arquivo,
+        nome_arquivo=_normalize_filename(upload.nome_arquivo),
         numero_nf=documento.numero_nf,
         cnpj_emitente=documento.cnpj_emitente,
         data_emissao=documento.data_emissao,
@@ -65,8 +103,8 @@ def _map_upload_to_list_item(upload: Upload) -> DocumentoListItem:
         valor_total=documento.valor_total,
         aprovador=documento.aprovador,
         descricao=documento.descricao,
-        status=documento.status_extracao,
-        resumo=_build_summary(documento.status_extracao, flags),
+        status=status,
+        resumo=_build_summary(status, flags),
         flags=flags,
     )
 

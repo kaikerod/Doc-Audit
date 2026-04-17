@@ -74,9 +74,8 @@ if FRONTEND_DIR.exists():
 
 
 @app.on_event("startup")
-def initialize_local_sqlite() -> None:
-    if settings.database_url.startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+def initialize_database_schema() -> None:
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/", tags=["meta"], response_model=None)

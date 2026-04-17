@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -10,6 +11,7 @@ from backend.app.main import app
 from backend.app.models.anomalia import Anomalia
 from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
+from backend.app.routers.documentos import _map_upload_to_list_item
 
 
 def test_list_documentos_returns_real_items_from_uploads_and_documentos(db_session) -> None:
@@ -77,3 +79,37 @@ def test_list_documentos_returns_real_items_from_uploads_and_documentos(db_sessi
     assert pending_item["documento_id"] is None
     assert pending_item["status"] == "pendente"
     assert pending_item["flags"] == []
+
+
+def test_map_upload_to_list_item_tolerates_inconsistent_document_data() -> None:
+    upload = Upload(
+        nome_arquivo="  ",
+        caminho_arquivo="C:/tmp/quebrado.txt",
+        hash_sha256="d" * 64,
+        tamanho_bytes=64,
+        status=None,
+    )
+    upload.id = uuid4()
+
+    documento = Documento(
+        upload_id=upload.id,
+        numero_nf="NF-QUEBRADA",
+        status_extracao=None,
+    )
+    documento.id = uuid4()
+
+    anomalia = Anomalia(
+        documento_id=documento.id,
+        codigo="SEM_DESCRICAO",
+        descricao=None,
+        severidade="ALTA",
+    )
+
+    documento.anomalias = [anomalia]
+    upload.documentos = [documento]
+
+    item = _map_upload_to_list_item(upload)
+
+    assert item.nome_arquivo == "arquivo_sem_nome.txt"
+    assert item.status == "pendente"
+    assert item.flags == []

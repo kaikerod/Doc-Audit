@@ -21,3 +21,8 @@ class UploadRead(BaseModel):
 
 class UploadBatchResponse(BaseModel):
     items: list[UploadRead]
+
+
+class UploadListResponse(BaseModel):
+    total: int
+    items: list[UploadRead]

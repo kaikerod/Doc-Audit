@@ -69,6 +69,67 @@ def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:
     assert db_session.scalar(select(Upload)) is None
 
 
+def test_list_uploads_returns_paginated_items(db_session, upload_storage_dir: Path) -> None:
+    upload_1 = Upload(
+        nome_arquivo="nf-1.txt",
+        caminho_arquivo=str(upload_storage_dir / "nf-1.txt"),
+        hash_sha256="1" * 64,
+        tamanho_bytes=11,
+        status="pendente",
+    )
+    upload_2 = Upload(
+        nome_arquivo="nf-2.txt",
+        caminho_arquivo=str(upload_storage_dir / "nf-2.txt"),
+        hash_sha256="2" * 64,
+        tamanho_bytes=22,
+        status="concluido",
+    )
+    db_session.add_all([upload_1, upload_2])
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/uploads?limit=1&offset=0")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["nome_arquivo"] == "nf-1.txt"
+
+
+def test_get_upload_returns_single_item(db_session, upload_storage_dir: Path) -> None:
+    upload = Upload(
+        nome_arquivo="nf-detalhe.txt",
+        caminho_arquivo=str(upload_storage_dir / "nf-detalhe.txt"),
+        hash_sha256="9" * 64,
+        tamanho_bytes=33,
+        status="pendente",
+    )
+    db_session.add(upload)
+    db_session.commit()
+    db_session.refresh(upload)
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(f"/api/v1/uploads/{upload.id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == str(upload.id)
+    assert payload["nome_arquivo"] == "nf-detalhe.txt"
+
+
 def test_delete_upload_returns_204_and_generates_audit_log(
     db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

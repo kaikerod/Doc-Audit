@@ -4,12 +4,13 @@ import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from sqlalchemy import func, select
 
 from ..config import settings
 from ..database import DbSession, get_db
 from ..models.upload import Upload
-from ..schemas.upload import UploadBatchResponse
+from ..schemas.upload import UploadBatchResponse, UploadListResponse, UploadRead
 from ..services.upload_service import UploadNotFoundError, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
@@ -48,6 +49,16 @@ def _validate_upload_file(filename: str, content: bytes) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Arquivo excede o limite de {settings.upload_max_size_bytes} bytes.",
         )
+
+
+def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
+    upload = db.get(Upload, upload_id)
+    if upload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload nao encontrado.",
+        )
+    return upload
 
 
 @router.post(
@@ -93,6 +104,40 @@ async def create_uploads(
     return UploadBatchResponse(items=created_uploads)
 
 
+@router.get(
+    "",
+    response_model=UploadListResponse,
+    summary="Lista todos os uploads",
+    description="Retorna uma lista paginada de uploads ordenados do mais recente para o mais antigo.",
+)
+def list_uploads(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: DbSession = Depends(get_db),
+) -> UploadListResponse:
+    total = db.scalar(select(func.count()).select_from(Upload)) or 0
+    uploads = db.scalars(
+        select(Upload)
+        .order_by(Upload.criado_em.desc(), Upload.nome_arquivo.asc(), Upload.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return UploadListResponse(total=total, items=[UploadRead.model_validate(upload) for upload in uploads])
+
+
+@router.get(
+    "/{upload_id}",
+    response_model=UploadRead,
+    summary="Detalha um upload",
+    description="Retorna os metadados de um upload especifico.",
+)
+def get_upload(
+    upload_id: UUID,
+    db: DbSession = Depends(get_db),
+) -> UploadRead:
+    return UploadRead.model_validate(_get_upload_or_404(db, upload_id))
+
+
 @router.delete(
     "/{upload_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -111,9 +156,6 @@ def remove_upload(
             ip=request.client.host if request.client else None,
         )
     except UploadNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Upload nao encontrado.",
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload nao encontrado.") from exc
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
