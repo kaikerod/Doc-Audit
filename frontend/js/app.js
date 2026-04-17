@@ -3,10 +3,10 @@
     try {
       await root.DocAuditApi.fetchApiHealth();
       indicator.textContent = "Disponivel";
-      indicator.className = "hero__status-pill";
+      indicator.className = "hero__status-pill hero__status-pill--success";
     } catch (_error) {
       indicator.textContent = "Offline";
-      indicator.className = "hero__status-pill";
+      indicator.className = "hero__status-pill hero__status-pill--error";
     }
   }
 

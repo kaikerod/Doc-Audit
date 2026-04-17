@@ -3,61 +3,186 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10191c" />
     <title>DocAudit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
     <div class="page-shell">
+      <div class="page-shell__glow page-shell__glow--amber" aria-hidden="true"></div>
+      <div class="page-shell__glow page-shell__glow--sage" aria-hidden="true"></div>
+
       <header class="hero">
-        <div class="hero__content">
+        <div class="hero__column hero__column--lead">
           <p class="eyebrow">Auditoria fiscal assistida por IA</p>
           <h1>DocAudit</h1>
           <p class="hero__copy">
             Centralize uploads, acompanhe a analise em tempo real e destaque
             anomalias criticas sem depender de planilhas soltas.
           </p>
+          <div class="hero__ribbon" aria-label="Capacidades principais">
+            <span>Upload rastreavel</span>
+            <span>Triagem automatizada</span>
+            <span>Exportacao imediata</span>
+          </div>
         </div>
-        <div class="hero__status">
-          <span class="hero__status-label">API</span>
-          <strong id="api-health-indicator" class="hero__status-pill">Verificando...</strong>
+
+        <div class="hero__column hero__column--board">
+          <div class="hero__status">
+            <span class="hero__status-label">API</span>
+            <strong id="api-health-indicator" class="hero__status-pill hero__status-pill--pending">
+              Verificando...
+            </strong>
+            <p class="hero__status-copy">
+              Estado da integracao principal que abastece a mesa de auditoria.
+            </p>
+          </div>
+
+          <div class="hero__mini-grid" aria-label="Fluxo operacional">
+            <article class="hero__mini-card">
+              <span>Entrada</span>
+              <strong>TXT em lote</strong>
+              <p>Receba ate 20 arquivos por envio com validacao imediata.</p>
+            </article>
+            <article class="hero__mini-card">
+              <span>Triagem</span>
+              <strong>IA + regras</strong>
+              <p>
+                Extraia campos, detecte anomalias e consolide a revisao em uma
+                unica mesa.
+              </p>
+            </article>
+          </div>
         </div>
       </header>
 
       <main id="dashboard-grid" class="dashboard-grid">
-        <section class="panel upload-panel">
-          <div class="panel__header">
-            <div>
-              <h2>Upload de arquivos TXT</h2>
-              <p class="panel__lead">
-                Envie lotes de documentos fiscais e acompanhe o processamento em um fluxo unico.
+        <section class="dashboard-top">
+          <section class="panel upload-panel">
+            <div class="panel__header">
+              <div>
+                <p class="panel__eyebrow">Entrada de documentos</p>
+                <h2>Upload de arquivos TXT</h2>
+                <p class="panel__lead">
+                  Envie lotes de documentos fiscais e acompanhe o processamento
+                  em um fluxo unico, sem sair da mesa de auditoria.
+                </p>
+              </div>
+              <p class="panel__hint">Maximo de 20 arquivos por envio, ate 5 MB cada.</p>
+            </div>
+
+            <div class="upload-panel__layout">
+              <div
+                id="upload-dropzone"
+                class="dropzone"
+                tabindex="0"
+                role="button"
+                aria-label="Selecionar arquivos TXT"
+              >
+                <div class="dropzone__icon">TXT</div>
+                <div class="dropzone__content">
+                  <strong>Arraste arquivos aqui</strong>
+                  <p>
+                    ou use o botao para selecionar notas fiscais e documentos
+                    financeiros.
+                  </p>
+                </div>
+                <button id="upload-browse-button" type="button" class="button button--primary">
+                  Selecionar arquivos
+                </button>
+                <input
+                  id="upload-file-input"
+                  type="file"
+                  accept=".txt,text/plain"
+                  multiple
+                  hidden
+                />
+              </div>
+
+              <div class="upload-panel__brief" aria-label="Resumo do fluxo">
+                <p class="upload-panel__brief-eyebrow">Fluxo de analise</p>
+                <div class="upload-panel__brief-list">
+                  <article class="upload-panel__brief-item">
+                    <span>01</span>
+                    <div>
+                      <strong>Recebimento</strong>
+                      <p>Validacao de extensao e tamanho antes do envio ao backend.</p>
+                    </div>
+                  </article>
+                  <article class="upload-panel__brief-item">
+                    <span>02</span>
+                    <div>
+                      <strong>Estruturacao</strong>
+                      <p>Leitura do conteudo com enriquecimento por IA e campos auditaveis.</p>
+                    </div>
+                  </article>
+                  <article class="upload-panel__brief-item">
+                    <span>03</span>
+                    <div>
+                      <strong>Priorizacao</strong>
+                      <p>Flags por severidade para acelerar a revisao manual e a exportacao.</p>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+
+            <div class="upload-panel__meta" aria-label="Regras de upload">
+              <span class="meta-pill">TXT apenas</span>
+              <span class="meta-pill">Batch com 20 arquivos</span>
+              <span class="meta-pill">5 MB por item</span>
+            </div>
+
+            <div class="upload-panel__footer">
+              <p id="upload-feedback" class="feedback feedback--neutral">
+                Nenhum envio em andamento.
               </p>
             </div>
-            <p class="panel__hint">Maximo de 20 arquivos por envio, ate 5 MB cada.</p>
-          </div>
+          </section>
 
-          <div id="upload-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Selecionar arquivos TXT">
-            <div class="dropzone__icon">TXT</div>
-            <div class="dropzone__content">
-              <strong>Arraste arquivos aqui</strong>
-              <p>ou use o botao para selecionar notas fiscais e documentos financeiros.</p>
+          <aside class="panel ops-panel" aria-label="Guia de severidade">
+            <div class="ops-panel__header">
+              <p class="panel__eyebrow">Guia de severidade</p>
+              <h2>Como ler as flags</h2>
+              <p class="panel__lead">
+                A mesa distingue risco operacional e ajuda a decidir o que
+                revisar primeiro.
+              </p>
             </div>
-            <button id="upload-browse-button" type="button" class="button button--primary">
-              Selecionar arquivos
-            </button>
-            <input id="upload-file-input" type="file" accept=".txt,text/plain" multiple hidden />
-          </div>
 
-          <div class="upload-panel__meta" aria-label="Regras de upload">
-            <span class="meta-pill">TXT apenas</span>
-            <span class="meta-pill">Batch com 20 arquivos</span>
-            <span class="meta-pill">5 MB por item</span>
-          </div>
-
-          <div class="upload-panel__footer">
-            <p id="upload-feedback" class="feedback feedback--neutral">
-              Nenhum envio em andamento.
-            </p>
-          </div>
+            <div class="ops-panel__stack">
+              <article class="legend-card legend-card--critical">
+                <span>Critica</span>
+                <strong>Intervencao imediata</strong>
+                <p>
+                  Duplicidade, divergencia de CNPJ e ocorrencias com impacto
+                  direto na conformidade.
+                </p>
+              </article>
+              <article class="legend-card legend-card--high">
+                <span>Alta</span>
+                <strong>Revisao prioritaria</strong>
+                <p>
+                  Data invalida, aprovador nao reconhecido ou valor
+                  inconsistente pedem checagem rapida.
+                </p>
+              </article>
+              <article class="legend-card legend-card--medium">
+                <span>Media</span>
+                <strong>Contexto complementar</strong>
+                <p>
+                  Campos ausentes e alertas de apoio continuam visiveis para
+                  fechar a analise.
+                </p>
+              </article>
+            </div>
+          </aside>
         </section>
 
         <section class="stats-grid" aria-label="Resumo dos documentos">
@@ -88,16 +213,22 @@
             <div class="panel__header panel__header--stack table-panel__header">
               <div class="table-panel__intro">
                 <div>
+                  <p class="panel__eyebrow">Mesa de auditoria</p>
                   <h2>Painel de resultados</h2>
                   <p class="panel__lead">
-                    Use os filtros para refinar a mesa de auditoria, abra uma linha para ver detalhes e exporte o recorte desejado.
+                    Use os filtros para refinar a mesa de auditoria, abra uma
+                    linha para ver detalhes e exporte o recorte desejado.
                   </p>
                 </div>
                 <div class="table-panel__callout">
                   <strong>Leitura rapida</strong>
-                  <p>Selecione uma linha da tabela para abrir o painel lateral com o contexto completo do documento.</p>
+                  <p>
+                    Selecione uma linha da tabela para abrir o painel lateral
+                    com o contexto completo do documento.
+                  </p>
                 </div>
               </div>
+
               <div class="toolbar">
                 <div class="toolbar__cluster toolbar__cluster--filters">
                   <div class="toolbar__cluster-head">
@@ -107,7 +238,11 @@
                   <div class="toolbar__grid">
                     <label class="toolbar__field toolbar__field--search">
                       <span>Buscar</span>
-                      <input id="document-search-input" type="search" placeholder="Arquivo ou numero da NF" />
+                      <input
+                        id="document-search-input"
+                        type="search"
+                        placeholder="Arquivo ou numero da NF"
+                      />
                     </label>
                     <label class="toolbar__field">
                       <span>Status</span>
@@ -130,10 +265,14 @@
                     </label>
                   </div>
                 </div>
+
                 <div class="toolbar__cluster toolbar__cluster--actions">
                   <div class="toolbar__cluster-head">
                     <span class="toolbar__cluster-eyebrow">Exportacao</span>
-                    <p>Baixe um recorte em Excel ou CSV para seguir a analise fora da tela.</p>
+                    <p>
+                      Baixe um recorte em Excel ou CSV para seguir a analise
+                      fora da tela.
+                    </p>
                   </div>
                   <div class="toolbar__actions">
                     <label class="toolbar__field toolbar__field--compact">
@@ -162,7 +301,14 @@
               <div class="table-shell__header">
                 <div>
                   <strong>Resultados consolidados</strong>
-                  <p>A tabela destaca o contexto principal do documento e as flags encontradas em cada registro.</p>
+                  <p>
+                    A tabela destaca o contexto principal do documento e as
+                    flags encontradas em cada registro.
+                  </p>
+                </div>
+                <div class="table-shell__legend" aria-label="Atalhos da mesa">
+                  <span class="meta-pill">Clique para abrir detalhes</span>
+                  <span class="meta-pill">Exclua notas direto pela tabela</span>
                 </div>
               </div>
               <table class="results-table">
@@ -193,15 +339,26 @@
               <div>
                 <p class="panel__eyebrow">Detalhes</p>
                 <h2 id="detail-title">Selecione um documento</h2>
+                <p class="detail-panel__copy">
+                  Ao abrir uma linha, a coluna lateral resume dados-chave e
+                  anomalias do arquivo.
+                </p>
               </div>
               <div class="detail-panel__actions">
-                <button id="detail-delete-button" type="button" class="button button--danger detail-panel__delete" hidden></button>
+                <button
+                  id="detail-delete-button"
+                  type="button"
+                  class="button button--danger detail-panel__delete"
+                  hidden
+                ></button>
                 <button id="detail-close-button" type="button" class="button button--ghost">
                   Fechar
                 </button>
               </div>
             </div>
+
             <dl id="detail-metadata" class="detail-metadata"></dl>
+
             <div>
               <h3 class="detail-panel__subtitle">Flags detectadas</h3>
               <div id="detail-flags" class="flags-stack"></div>
