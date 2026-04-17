@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import select
@@ -78,10 +77,10 @@ def test_process_upload_document_task_fluxo_completo_eager(db_session) -> None:
 
     assert result.successful()
     assert documento is not None
-    assert documento.status_extracao == "concluído"
+    assert documento.status_extracao == "concluido"
     assert documento.numero_nf == "NF-2026-001"
     assert upload is not None
-    assert upload.status == "concluído"
+    assert upload.status == "concluido"
     assert len(documento.anomalias) == 1
     assert documento.anomalias[0].codigo == "VALOR_ZERO"
     assert {log.evento for log in audit_logs} == {

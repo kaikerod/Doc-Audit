@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select
@@ -11,6 +10,18 @@ from ..config import settings
 from ..database import DbSession, get_db
 from ..models.upload import Upload
 from ..schemas.upload import UploadBatchResponse, UploadListResponse, UploadRead
+from ..services.document_processing_service import (
+    ProcessedUploadBundle,
+    TxtDecodingError,
+    build_processed_upload_bundle,
+    cleanup_processed_uploads,
+    persist_processed_uploads,
+)
+from ..services.ia_service import (
+    IAServiceError,
+    OpenRouterConfigurationError,
+    OpenRouterTimeoutError,
+)
 from ..services.upload_service import UploadNotFoundError, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
@@ -68,40 +79,70 @@ def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
     description="Recebe até 20 arquivos .txt para processamento. Cada arquivo é validado por extensão e tamanho antes de ser enfileirado.",
 )
 async def create_uploads(
+    request: Request,
     files: list[UploadFile] = File(...),
     db: DbSession = Depends(get_db),
     storage_dir: Path = Depends(get_upload_storage_dir),
 ) -> UploadBatchResponse:
     _validate_upload_count(files)
 
-    created_uploads: list[Upload] = []
+    prepared_uploads: list[ProcessedUploadBundle] = []
+    validated_files: list[tuple[str, bytes]] = []
+    pending_invoice_keys: set[tuple[str, str]] = set()
 
     for uploaded_file in files:
         original_name = Path(uploaded_file.filename or "").name
         content = await uploaded_file.read()
 
         _validate_upload_file(original_name, content)
+        validated_files.append((original_name, content))
 
-        stored_name = f"{uuid4()}.txt"
-        file_path = storage_dir / stored_name
-        file_path.write_bytes(content)
+    try:
+        for original_name, content in validated_files:
+            prepared_upload = build_processed_upload_bundle(
+                db,
+                original_name=original_name,
+                content=content,
+                storage_dir=storage_dir,
+                extra_existing_invoice_keys=pending_invoice_keys,
+            )
+            prepared_uploads.append(prepared_upload)
 
-        upload = Upload(
-            nome_arquivo=original_name,
-            caminho_arquivo=str(file_path.resolve()),
-            hash_sha256=hashlib.sha256(content).hexdigest(),
-            tamanho_bytes=len(content),
-            status="pendente",
+            if prepared_upload.documento.numero_nf and prepared_upload.documento.cnpj_emitente:
+                pending_invoice_keys.add(
+                    (
+                        prepared_upload.documento.numero_nf,
+                        prepared_upload.documento.cnpj_emitente,
+                    )
+                )
+
+        persist_processed_uploads(
+            db,
+            prepared_uploads,
+            ip=request.client.host if request.client else None,
         )
-        db.add(upload)
-        created_uploads.append(upload)
+    except TxtDecodingError as exc:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except OpenRouterConfigurationError as exc:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except OpenRouterTimeoutError as exc:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    except IAServiceError as exc:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise
 
-    db.commit()
-
-    for upload in created_uploads:
-        db.refresh(upload)
-
-    return UploadBatchResponse(items=created_uploads)
+    return UploadBatchResponse(items=[processed_upload.upload for processed_upload in prepared_uploads])
 
 
 @router.get(

@@ -36,7 +36,7 @@
         if (typeof onUploadSuccess === "function") {
           await onUploadSuccess(payload);
         }
-        setFeedback(feedbackNode, "Upload conclu\u00eddo. Processamento em andamento.", "success");
+        setFeedback(feedbackNode, "Upload e an\u00e1lise conclu\u00eddos.", "success");
         fileInput.value = "";
       } catch (error) {
         setFeedback(feedbackNode, error.message, "error");

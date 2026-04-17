@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,11 +15,37 @@ from backend.app.models.audit_log import AuditLog
 from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
 from backend.app.routers.uploads import get_upload_storage_dir
+from backend.app.schemas.documento import DocumentExtractionResult
+from backend.app.services.ia_service import OpenRouterTimeoutError
 
 
 @pytest.fixture()
 def upload_storage_dir() -> Path:
     return Path.cwd() / "tests" / ".tmp" / "uploads"
+
+
+def _build_extraction_result() -> DocumentExtractionResult:
+    return DocumentExtractionResult(
+        numero_nf="NF-2026-001",
+        cnpj_emitente="11.222.333/0001-81",
+        cnpj_destinatario="45.723.174/0001-10",
+        data_emissao="2026-04-15",
+        data_pagamento="2026-04-16",
+        valor_total="199.90",
+        aprovador="Maria Silva",
+        descricao="Servico mensal",
+        confiancas={
+            "numero_nf": 0.99,
+            "cnpj_emitente": 0.98,
+            "cnpj_destinatario": 0.97,
+            "data_emissao": 0.96,
+            "data_pagamento": 0.95,
+            "valor_total": 0.94,
+            "aprovador": 0.93,
+            "descricao": 0.92,
+        },
+        extraction_failed_fields=[],
+    )
 
 
 def test_upload_txt_valido_returns_200(
@@ -28,27 +55,70 @@ def test_upload_txt_valido_returns_200(
     app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
     monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
 
-    try:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/v1/uploads",
-                files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
-            )
-    finally:
-        app.dependency_overrides.clear()
+    with patch(
+        "backend.app.services.document_processing_service.extract_document_data",
+        return_value=_build_extraction_result(),
+    ):
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
 
     assert response.status_code == 200
     response_data = response.json()
     assert len(response_data["items"]) == 1
     assert response_data["items"][0]["nome_arquivo"] == "nota-fiscal.txt"
-    assert response_data["items"][0]["status"] == "pendente"
+    assert response_data["items"][0]["status"] == "concluido"
 
     saved_upload = db_session.scalar(select(Upload))
     assert saved_upload is not None
     assert saved_upload.nome_arquivo == "nota-fiscal.txt"
-    assert saved_upload.status == "pendente"
+    assert saved_upload.status == "concluido"
     assert saved_upload.tamanho_bytes == len(b"conteudo de teste")
     assert saved_upload.caminho_arquivo.endswith(".txt")
+
+    saved_documento = db_session.scalar(select(Documento))
+    assert saved_documento is not None
+    assert saved_documento.numero_nf == "NF-2026-001"
+    assert saved_documento.status_extracao == "concluido"
+
+
+def test_upload_does_not_persist_records_when_openrouter_fails(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    write_attempts: list[Path] = []
+    monkeypatch.setattr(
+        Path,
+        "write_bytes",
+        lambda self, data: write_attempts.append(Path(self)) or len(data),
+    )
+
+    with patch(
+        "backend.app.services.document_processing_service.extract_document_data",
+        side_effect=OpenRouterTimeoutError("Timeout ao chamar OpenRouter apos 3 tentativas."),
+    ):
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 504
+    assert response.json() == {"detail": "Timeout ao chamar OpenRouter apos 3 tentativas."}
+    assert db_session.scalar(select(Upload)) is None
+    assert db_session.scalar(select(Documento)) is None
+    assert db_session.scalar(select(AuditLog)) is None
+    assert write_attempts == []
 
 
 def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:

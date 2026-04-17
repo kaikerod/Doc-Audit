@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 from celery import Celery
@@ -10,12 +9,14 @@ from sqlalchemy import select
 from ..config import settings
 from ..database import DbSession, SessionLocal
 from ..models.anomalia import Anomalia
-from ..models.aprovador_autorizado import AprovadorAutorizado
 from ..models.documento import Documento
-from ..models.fornecedor import Fornecedor
 from ..models.upload import Upload
-from ..services.anomalia_service import detectar_anomalias
+from ..services.anomalia_service import DetectedAnomaly
 from ..services.audit_service import log_audit_event
+from ..services.document_processing_service import (
+    detect_document_anomalies,
+    populate_documento_from_extraction,
+)
 from ..services.ia_service import extract_document_data
 
 celery_app = Celery("docaudit", broker=settings.redis_url, backend=settings.redis_url)
@@ -28,44 +29,13 @@ def _load_upload_or_fail(db: DbSession, upload_id: UUID) -> Upload:
     return upload
 
 
-def _get_or_create_documento(db: DbSession, upload_id: UUID, conteudo_bruto: str) -> Documento:
-    documento = db.scalar(select(Documento).where(Documento.upload_id == upload_id))
-    if documento is not None:
-        documento.conteudo_bruto = conteudo_bruto
-        return documento
-
-    documento = Documento(
-        upload_id=upload_id,
-        conteudo_bruto=conteudo_bruto,
-        status_extracao="processando",
-    )
-    db.add(documento)
-    db.flush()
-    return documento
+def _load_existing_documento(db: DbSession, upload_id: UUID) -> Documento | None:
+    return db.scalar(select(Documento).where(Documento.upload_id == upload_id))
 
 
-def _load_anomaly_context(db: DbSession, documento: Documento) -> dict[str, Any]:
-    existing_invoice_keys = {
-        (numero_nf, cnpj_emitente)
-        for numero_nf, cnpj_emitente in db.execute(
-            select(Documento.numero_nf, Documento.cnpj_emitente).where(Documento.id != documento.id)
-        )
-        if numero_nf and cnpj_emitente
-    }
-    fornecedores_cnpj_values = {
-        cnpj for cnpj, in db.execute(select(Fornecedor.cnpj).where(Fornecedor.ativo.is_(True)))
-    }
-    aprovadores_autorizados_values = {
-        nome for nome, in db.execute(select(AprovadorAutorizado.nome).where(AprovadorAutorizado.ativo.is_(True)))
-    }
-    return {
-        "existing_invoice_keys": existing_invoice_keys,
-        "fornecedores_cnpj": fornecedores_cnpj_values or None,
-        "aprovadores_autorizados": aprovadores_autorizados_values or None,
-    }
-
-
-def _replace_document_anomalies(db: DbSession, documento: Documento, anomalies: list[Any]) -> None:
+def _replace_document_anomalies(
+    db: DbSession, documento: Documento, anomalies: list[DetectedAnomaly]
+) -> None:
     documento.anomalias.clear()
     db.flush()
 
@@ -103,30 +73,30 @@ def process_upload_document_pipeline(upload_id: str | UUID, db: DbSession) -> Do
 
     try:
         conteudo_bruto = Path(upload.caminho_arquivo).read_text(encoding="utf-8")
-        documento = _get_or_create_documento(db, upload.id, conteudo_bruto)
-        db.commit()
-        db.refresh(documento)
+        documento = _load_existing_documento(db, upload.id)
 
         extraction = extract_document_data(conteudo_bruto)
         extraction_payload = extraction.model_dump(mode="json")
+        anomalies = detect_document_anomalies(
+            db,
+            extraction_payload,
+            exclude_document_id=documento.id if documento is not None else None,
+        )
 
-        documento.numero_nf = extraction.numero_nf
-        documento.cnpj_emitente = extraction.cnpj_emitente
-        documento.cnpj_destinatario = extraction.cnpj_destinatario
-        documento.data_emissao = extraction.data_emissao
-        documento.data_pagamento = extraction.data_pagamento
-        documento.valor_total = extraction.valor_total
-        documento.aprovador = extraction.aprovador
-        documento.descricao = extraction.descricao
-        documento.resposta_ia = extraction_payload
-        documento.modelo_ia = settings.openrouter_model
+        if documento is None:
+            documento = Documento(upload_id=upload.id)
+            db.add(documento)
+            db.flush()
 
-        anomaly_context = _load_anomaly_context(db, documento)
-        anomalies = detectar_anomalias(extraction_payload, **anomaly_context)
+        populate_documento_from_extraction(
+            documento,
+            conteudo_bruto=conteudo_bruto,
+            extraction=extraction,
+            extraction_payload=extraction_payload,
+        )
         _replace_document_anomalies(db, documento, anomalies)
 
-        documento.status_extracao = "concluído"
-        upload.status = "concluído"
+        upload.status = "concluido"
         db.commit()
         db.refresh(documento)
 
