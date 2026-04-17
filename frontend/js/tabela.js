@@ -81,7 +81,7 @@
       elements.deleteButton.innerHTML = DELETE_ICON + "<span>Excluir nota</span>";
     }
     elements.metadata.innerHTML = [
-      ["Numero NF", document.numeroNF || "--"],
+      ["N\u00famero NF", document.numeroNF || "--"],
       ["CNPJ emitente", document.cnpjEmitente || "--"],
       ["Data NF", root.DocAuditUiLogic.formatDateBR(document.dataNF)],
       ["Pagamento", root.DocAuditUiLogic.formatDateBR(document.dataPagamento)],
@@ -117,7 +117,7 @@
             );
           })
           .join("")
-      : '<div class="flag-card"><p>Este documento nao possui anomalias detectadas.</p></div>';
+      : '<div class="flag-card"><p>Este documento n\u00e3o possui anomalias detectadas.</p></div>';
   }
 
   function createTableController(options) {
@@ -199,7 +199,7 @@
             ) +
             renderCell("Flags", renderFlags(document.flags)) +
             renderCell(
-              "Acoes",
+              "A\u00e7\u00f5es",
               renderDeleteButton(document, "icon-button icon-button--danger"),
               "table-actions-cell"
             ) +
@@ -279,7 +279,7 @@
         }
 
         if (typeof root.alert === "function") {
-          root.alert(error && error.message ? error.message : "Nao foi possivel excluir a nota.");
+          root.alert(error && error.message ? error.message : "N\u00e3o foi poss\u00edvel excluir a nota.");
         }
       });
     }

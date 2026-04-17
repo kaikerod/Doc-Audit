@@ -77,7 +77,7 @@
   async function fetchApiHealth() {
     const response = await fetch(buildApiUrl(API_PREFIX + "/health"));
     if (!response.ok) {
-      throw new Error("Nao foi possivel consultar o health check da API.");
+      throw new Error("N\u00e3o foi poss\u00edvel consultar o health check da API.");
     }
 
     return response.json();
@@ -105,7 +105,7 @@
   async function fetchDocuments() {
     const response = await fetch(buildApiUrl(API_PREFIX + "/documentos"));
     if (!response.ok) {
-      throw new Error("Nao foi possivel carregar os documentos do dashboard.");
+      throw new Error("N\u00e3o foi poss\u00edvel carregar os documentos do dashboard.");
     }
 
     return response.json();
@@ -118,7 +118,7 @@
 
     if (!response.ok) {
       const payload = await parseJsonSafely(response);
-      throw new Error(payload && payload.detail ? payload.detail : "Nao foi possivel excluir a nota.");
+      throw new Error(payload && payload.detail ? payload.detail : "N\u00e3o foi poss\u00edvel excluir a nota.");
     }
   }
 
@@ -134,7 +134,7 @@
 
     if (!response.ok) {
       const payload = await parseJsonSafely(response);
-      throw new Error(payload && payload.detail ? payload.detail : "Nao foi possivel exportar os documentos.");
+      throw new Error(payload && payload.detail ? payload.detail : "N\u00e3o foi poss\u00edvel exportar os documentos.");
     }
 
     return {

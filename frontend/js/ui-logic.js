@@ -98,13 +98,13 @@
 
     if (hasFlags) {
       return {
-        label: "Concluido com flags",
+        label: "Conclu\u00eddo com flags",
         className: "badge badge--status badge--status-alert"
       };
     }
 
     return {
-      label: "Concluido",
+      label: "Conclu\u00eddo",
       className: "badge badge--status badge--status-success"
     };
   }
@@ -229,14 +229,14 @@
     if (!hasTxtExtension) {
       return {
         valid: false,
-        reason: "Apenas arquivos .txt sao permitidos."
+        reason: "Apenas arquivos .txt s\u00e3o permitidos."
       };
     }
 
     if (!file.size) {
       return {
         valid: false,
-        reason: "Arquivos vazios nao sao permitidos."
+        reason: "Arquivos vazios n\u00e3o s\u00e3o permitidos."
       };
     }
 

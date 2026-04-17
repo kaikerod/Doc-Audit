@@ -2,7 +2,7 @@
   async function updateApiHealth(indicator) {
     try {
       await root.DocAuditApi.fetchApiHealth();
-      indicator.textContent = "Disponivel";
+      indicator.textContent = "Dispon\u00edvel";
       indicator.className = "hero__status-pill hero__status-pill--success";
     } catch (_error) {
       indicator.textContent = "Offline";

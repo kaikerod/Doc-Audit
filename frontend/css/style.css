@@ -231,20 +231,21 @@ select:focus-visible,
 .panel h2,
 .detail-panel h2 {
   margin: 0;
-  font-family: "Instrument Serif", Georgia, serif;
-  letter-spacing: -0.05em;
+  font-family: "Sora", "Manrope", sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.035em;
 }
 
 .hero h1 {
   font-size: clamp(3.5rem, 7vw, 6.1rem);
-  line-height: 0.9;
+  line-height: 0.94;
   color: var(--ink-inverse);
 }
 
 .panel h2,
 .detail-panel h2 {
   font-size: clamp(2rem, 3vw, 2.8rem);
-  line-height: 0.95;
+  line-height: 1.02;
 }
 
 .eyebrow,

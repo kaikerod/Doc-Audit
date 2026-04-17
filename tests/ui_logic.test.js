@@ -82,7 +82,7 @@ describe("DocAudit UI logic", () => {
 
     expect(result).toEqual({
       valid: false,
-      reason: "Apenas arquivos .txt sao permitidos."
+      reason: "Apenas arquivos .txt s\u00e3o permitidos."
     });
   });
 
@@ -98,9 +98,9 @@ describe("DocAudit UI logic", () => {
       data_pagamento: "2026-04-16",
       valor_total: 2500.1,
       aprovador: "Maria Silva",
-      descricao: "Servico",
-      status: "concluído",
-      resumo: "Processamento concluido sem anomalias.",
+      descricao: "Servi\u00e7o",
+      status: "conclu\u00eddo",
+      resumo: "Processamento conclu\u00eddo sem anomalias.",
       flags: []
     });
 
@@ -115,9 +115,9 @@ describe("DocAudit UI logic", () => {
       dataPagamento: "2026-04-16",
       valor: 2500.1,
       aprovador: "Maria Silva",
-      descricao: "Servico",
-      status: "concluído",
-      resumo: "Processamento concluido sem anomalias.",
+      descricao: "Servi\u00e7o",
+      status: "conclu\u00eddo",
+      resumo: "Processamento conclu\u00eddo sem anomalias.",
       flags: []
     });
   });
