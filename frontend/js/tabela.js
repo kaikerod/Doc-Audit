@@ -1,4 +1,9 @@
 (function (root) {
+  var DELETE_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-1 5h8v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V8zm2 2v8h2v-8h-2zm4 0v8h2v-8h-2z" fill="currentColor"></path>' +
+    "</svg>";
+
   function renderFlags(flags) {
     if (!flags.length) {
       return '<span class="cell-muted">Sem flags</span>';
@@ -21,20 +26,60 @@
     );
   }
 
+  function renderDeleteButton(document, className) {
+    if (!document.uploadId) {
+      return '<span class="cell-muted">--</span>';
+    }
+
+    return (
+      '<button type="button" class="' +
+      className +
+      '" data-delete-upload="true" data-upload-id="' +
+      root.DocAuditUiLogic.escapeHtml(document.uploadId) +
+      '" aria-label="Excluir nota ' +
+      root.DocAuditUiLogic.escapeHtml(document.nomeArquivo) +
+      '" title="Excluir nota">' +
+      DELETE_ICON +
+      "</button>"
+    );
+  }
+
+  function renderCell(label, content, className) {
+    var resolvedClassName = className ? ' class="' + className + '"' : "";
+    return (
+      "<td" +
+      resolvedClassName +
+      ' data-label="' +
+      root.DocAuditUiLogic.escapeHtml(label) +
+      '">' +
+      content +
+      "</td>"
+    );
+  }
+
   function renderDetail(document, elements) {
     if (!document) {
       if (elements.layout) {
-        elements.layout.classList.remove("dashboard-grid--detail-open");
+        elements.layout.classList.remove("results-layout--detail-open");
       }
       elements.panel.classList.add("is-hidden");
+      if (elements.deleteButton) {
+        elements.deleteButton.hidden = true;
+        elements.deleteButton.dataset.uploadId = "";
+      }
       return;
     }
 
     if (elements.layout) {
-      elements.layout.classList.add("dashboard-grid--detail-open");
+      elements.layout.classList.add("results-layout--detail-open");
     }
     elements.panel.classList.remove("is-hidden");
     elements.title.textContent = document.nomeArquivo;
+    if (elements.deleteButton) {
+      elements.deleteButton.hidden = !document.uploadId;
+      elements.deleteButton.dataset.uploadId = document.uploadId || "";
+      elements.deleteButton.innerHTML = DELETE_ICON + "<span>Excluir nota</span>";
+    }
     elements.metadata.innerHTML = [
       ["Numero NF", document.numeroNF || "--"],
       ["CNPJ emitente", document.cnpjEmitente || "--"],
@@ -92,6 +137,7 @@
       detailPanel: {
         panel: options.detailPanel,
         title: options.detailTitle,
+        deleteButton: options.detailDeleteButton,
         metadata: options.detailMetadata,
         flags: options.detailFlags,
         layout: options.dashboardGrid
@@ -130,24 +176,33 @@
             '"' +
             rowClassName +
             ">" +
-            "<td>" +
-            '<div class="cell-primary">' +
-            "<strong>" +
-            root.DocAuditUiLogic.escapeHtml(document.nomeArquivo) +
-            "</strong>" +
-            '<span class="cell-muted">' +
-            root.DocAuditUiLogic.escapeHtml(document.resumo || "Documento monitorado no dashboard.") +
-            "</span>" +
-            "</div>" +
-            "</td>" +
-            "<td>" + root.DocAuditUiLogic.escapeHtml(document.numeroNF || "--") + "</td>" +
-            "<td>" + root.DocAuditUiLogic.escapeHtml(document.cnpjEmitente || "--") + "</td>" +
-            "<td>" + root.DocAuditUiLogic.formatDateBR(document.dataNF) + "</td>" +
-            "<td>" + root.DocAuditUiLogic.formatDateBR(document.dataPagamento) + "</td>" +
-            "<td>" + root.DocAuditUiLogic.formatCurrencyBRL(document.valor) + "</td>" +
-            "<td>" + root.DocAuditUiLogic.escapeHtml(document.aprovador || "--") + "</td>" +
-            '<td><span class="' + statusMeta.className + '">' + statusMeta.label + "</span></td>" +
-            "<td>" + renderFlags(document.flags) + "</td>" +
+            renderCell(
+              "Arquivo",
+              '<div class="cell-primary">' +
+                "<strong>" +
+                root.DocAuditUiLogic.escapeHtml(document.nomeArquivo) +
+                "</strong>" +
+                '<span class="cell-muted">' +
+                root.DocAuditUiLogic.escapeHtml(document.resumo || "Documento monitorado no dashboard.") +
+                "</span>" +
+              "</div>"
+            ) +
+            renderCell("NF", root.DocAuditUiLogic.escapeHtml(document.numeroNF || "--")) +
+            renderCell("CNPJ emitente", root.DocAuditUiLogic.escapeHtml(document.cnpjEmitente || "--")) +
+            renderCell("Data NF", root.DocAuditUiLogic.formatDateBR(document.dataNF)) +
+            renderCell("Pagamento", root.DocAuditUiLogic.formatDateBR(document.dataPagamento)) +
+            renderCell("Valor", root.DocAuditUiLogic.formatCurrencyBRL(document.valor)) +
+            renderCell("Aprovador", root.DocAuditUiLogic.escapeHtml(document.aprovador || "--")) +
+            renderCell(
+              "Status",
+              '<span class="' + statusMeta.className + '">' + statusMeta.label + "</span>"
+            ) +
+            renderCell("Flags", renderFlags(document.flags)) +
+            renderCell(
+              "Acoes",
+              renderDeleteButton(document, "icon-button icon-button--danger"),
+              "table-actions-cell"
+            ) +
             "</tr>"
           );
         })
@@ -184,6 +239,51 @@
       render();
     }
 
+    function removeDocumentByUploadId(uploadId) {
+      state.documents = state.documents.filter(function (document) {
+        return document.uploadId !== uploadId;
+      });
+
+      if (
+        state.selectedDocumentId &&
+        !state.documents.some(function (document) {
+          return document.id === state.selectedDocumentId;
+        })
+      ) {
+        state.selectedDocumentId = state.documents.length ? state.documents[0].id : null;
+      }
+
+      render();
+    }
+
+    function clearSelection() {
+      state.selectedDocumentId = null;
+      render();
+    }
+
+    function triggerDelete(uploadId) {
+      if (!uploadId || typeof options.onDeleteUpload !== "function") {
+        return;
+      }
+
+      var targetDocument = state.documents.find(function (document) {
+        return document.uploadId === uploadId;
+      });
+      if (!targetDocument) {
+        return;
+      }
+
+      Promise.resolve(options.onDeleteUpload(targetDocument)).catch(function (error) {
+        if (root.console && typeof root.console.error === "function") {
+          root.console.error(error);
+        }
+
+        if (typeof root.alert === "function") {
+          root.alert(error && error.message ? error.message : "Nao foi possivel excluir a nota.");
+        }
+      });
+    }
+
     function bindEvents() {
       [elements.searchInput, elements.statusFilter, elements.severityFilter].forEach(function (element) {
         element.addEventListener("input", render);
@@ -191,6 +291,13 @@
       });
 
       elements.body.addEventListener("click", function (event) {
+        var deleteButton = event.target.closest("[data-delete-upload]");
+        if (deleteButton) {
+          event.preventDefault();
+          triggerDelete(deleteButton.dataset.uploadId);
+          return;
+        }
+
         var row = event.target.closest("tr[data-document-id]");
         if (!row) {
           return;
@@ -201,6 +308,10 @@
       });
 
       elements.body.addEventListener("keydown", function (event) {
+        if (event.target.closest("[data-delete-upload]")) {
+          return;
+        }
+
         var row = event.target.closest("tr[data-document-id]");
         if (!row) {
           return;
@@ -212,13 +323,21 @@
           render();
         }
       });
+
+      if (elements.detailPanel.deleteButton) {
+        elements.detailPanel.deleteButton.addEventListener("click", function () {
+          triggerDelete(this.dataset.uploadId);
+        });
+      }
     }
 
     bindEvents();
     render();
 
     return {
+      clearSelection: clearSelection,
       prependDocuments: prependDocuments,
+      removeDocumentByUploadId: removeDocumentByUploadId,
       render: render,
       setDocuments: setDocuments
     };

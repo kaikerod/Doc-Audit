@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
-import shutil
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,17 +10,15 @@ from sqlalchemy import select
 
 from backend.app.database import get_db
 from backend.app.main import app
+from backend.app.models.audit_log import AuditLog
+from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
 from backend.app.routers.uploads import get_upload_storage_dir
 
 
 @pytest.fixture()
 def upload_storage_dir() -> Path:
-    temp_dir = Path(tempfile.mkdtemp())
-    try:
-        yield temp_dir
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    return Path.cwd() / "tests" / ".tmp" / "uploads"
 
 
 def test_upload_txt_valido_returns_200(
@@ -69,3 +67,80 @@ def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:
     assert response.status_code == 400
     assert response.json() == {"detail": "Apenas arquivos .txt sao permitidos."}
     assert db_session.scalar(select(Upload)) is None
+
+
+def test_delete_upload_returns_204_and_generates_audit_log(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored_file = upload_storage_dir / "nf-para-excluir.txt"
+    deleted_files: list[Path] = []
+
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        lambda self: deleted_files.append(Path(self)),
+    )
+
+    upload = Upload(
+        nome_arquivo="nf-para-excluir.txt",
+        caminho_arquivo=str(stored_file),
+        hash_sha256="c" * 64,
+        tamanho_bytes=23,
+        status="concluido",
+    )
+    db_session.add(upload)
+    db_session.commit()
+    db_session.refresh(upload)
+
+    documento = Documento(
+        upload_id=upload.id,
+        numero_nf="NF-2026-100",
+        cnpj_emitente="11.222.333/0001-81",
+        data_emissao=date(2026, 4, 15),
+        data_pagamento=date(2026, 4, 16),
+        valor_total=Decimal("1234.56"),
+        status_extracao="concluido",
+    )
+    db_session.add(documento)
+    db_session.commit()
+    db_session.refresh(documento)
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    try:
+        with TestClient(app) as client:
+            response = client.delete(f"/api/v1/uploads/{upload.id}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert db_session.get(Upload, upload.id) is None
+    assert db_session.get(Documento, documento.id) is None
+    assert deleted_files == [stored_file]
+
+    audit_log = db_session.scalar(
+        select(AuditLog)
+        .where(AuditLog.evento == "EXCLUSAO_UPLOAD")
+        .where(AuditLog.entidade_id == str(upload.id))
+    )
+
+    assert audit_log is not None
+    assert audit_log.entidade_tipo == "upload"
+    assert audit_log.payload == {
+        "upload_id": str(upload.id),
+        "nome_arquivo": "nf-para-excluir.txt",
+        "status_upload": "concluido",
+        "documentos": [
+            {
+                "documento_id": str(documento.id),
+                "numero_nf": "NF-2026-100",
+                "cnpj_emitente": "11.222.333/0001-81",
+                "data_emissao": "2026-04-15",
+                "data_pagamento": "2026-04-16",
+                "valor_total": "1234.56",
+                "status_extracao": "concluido",
+            }
+        ],
+    }

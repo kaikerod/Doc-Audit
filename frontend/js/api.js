@@ -111,6 +111,17 @@
     return response.json();
   }
 
+  async function deleteUpload(uploadId) {
+    const response = await fetch(buildApiUrl(API_PREFIX + "/uploads/" + uploadId), {
+      method: "DELETE"
+    });
+
+    if (!response.ok) {
+      const payload = await parseJsonSafely(response);
+      throw new Error(payload && payload.detail ? payload.detail : "Nao foi possivel excluir a nota.");
+    }
+  }
+
   async function fetchDocumentExport(options) {
     var safeOptions = options || {};
     var format = root.DocAuditUiLogic.normalizeKeyword(safeOptions.format) === "excel" ? "excel" : "csv";
@@ -136,6 +147,7 @@
   }
 
   root.DocAuditApi = {
+    deleteUpload: deleteUpload,
     fetchDocumentExport: fetchDocumentExport,
     fetchDocuments: fetchDocuments,
     fetchApiHealth: fetchApiHealth,

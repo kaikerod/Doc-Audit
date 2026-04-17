@@ -83,125 +83,131 @@
           </article>
         </section>
 
-        <section class="panel table-panel">
-          <div class="panel__header panel__header--stack table-panel__header">
-            <div class="table-panel__intro">
-              <div>
-                <h2>Painel de resultados</h2>
-                <p class="panel__lead">
-                  Use os filtros para refinar a mesa de auditoria, abra uma linha para ver detalhes e exporte o recorte desejado.
-                </p>
+        <section id="results-layout" class="results-layout" aria-label="Mesa de auditoria">
+          <div class="panel table-panel">
+            <div class="panel__header panel__header--stack table-panel__header">
+              <div class="table-panel__intro">
+                <div>
+                  <h2>Painel de resultados</h2>
+                  <p class="panel__lead">
+                    Use os filtros para refinar a mesa de auditoria, abra uma linha para ver detalhes e exporte o recorte desejado.
+                  </p>
+                </div>
+                <div class="table-panel__callout">
+                  <strong>Leitura rapida</strong>
+                  <p>Selecione uma linha da tabela para abrir o painel lateral com o contexto completo do documento.</p>
+                </div>
               </div>
-              <div class="table-panel__callout">
-                <strong>Leitura rapida</strong>
-                <p>Selecione uma linha da tabela para abrir o painel lateral com o contexto completo do documento.</p>
+              <div class="toolbar">
+                <div class="toolbar__cluster toolbar__cluster--filters">
+                  <div class="toolbar__cluster-head">
+                    <span class="toolbar__cluster-eyebrow">Filtros</span>
+                    <p>Refine a mesa por arquivo, status ou severidade das flags.</p>
+                  </div>
+                  <div class="toolbar__grid">
+                    <label class="toolbar__field toolbar__field--search">
+                      <span>Buscar</span>
+                      <input id="document-search-input" type="search" placeholder="Arquivo ou numero da NF" />
+                    </label>
+                    <label class="toolbar__field">
+                      <span>Status</span>
+                      <select id="document-status-filter">
+                        <option value="todos">Todos</option>
+                        <option value="com_anomalia">Com anomalia</option>
+                        <option value="sem_anomalia">Sem anomalia</option>
+                        <option value="processando">Processando</option>
+                        <option value="erro">Erro</option>
+                      </select>
+                    </label>
+                    <label class="toolbar__field">
+                      <span>Severidade</span>
+                      <select id="document-severity-filter">
+                        <option value="todas">Todas</option>
+                        <option value="CRITICA">Critica</option>
+                        <option value="ALTA">Alta</option>
+                        <option value="MEDIA">Media</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="toolbar__cluster toolbar__cluster--actions">
+                  <div class="toolbar__cluster-head">
+                    <span class="toolbar__cluster-eyebrow">Exportacao</span>
+                    <p>Baixe um recorte em Excel ou CSV para seguir a analise fora da tela.</p>
+                  </div>
+                  <div class="toolbar__actions">
+                    <label class="toolbar__field toolbar__field--compact">
+                      <span>Formato</span>
+                      <select id="export-format-select">
+                        <option value="excel">Excel</option>
+                        <option value="csv">CSV</option>
+                      </select>
+                    </label>
+                    <label class="toolbar__toggle" for="export-anomalies-only">
+                      <input id="export-anomalies-only" type="checkbox" />
+                      <span>Somente com anomalias</span>
+                    </label>
+                    <button id="export-button" type="button" class="button button--primary">
+                      Exportar
+                    </button>
+                  </div>
+                  <p id="export-feedback" class="feedback table-panel__feedback">
+                    Exporte os resultados em CSV ou Excel.
+                  </p>
+                </div>
               </div>
             </div>
-            <div class="toolbar">
-              <div class="toolbar__cluster toolbar__cluster--filters">
-                <div class="toolbar__cluster-head">
-                  <span class="toolbar__cluster-eyebrow">Filtros</span>
-                  <p>Refine a mesa por arquivo, status ou severidade das flags.</p>
-                </div>
-                <div class="toolbar__grid">
-                  <label class="toolbar__field toolbar__field--search">
-                    <span>Buscar</span>
-                    <input id="document-search-input" type="search" placeholder="Arquivo ou numero da NF" />
-                  </label>
-                  <label class="toolbar__field">
-                    <span>Status</span>
-                    <select id="document-status-filter">
-                      <option value="todos">Todos</option>
-                      <option value="com_anomalia">Com anomalia</option>
-                      <option value="sem_anomalia">Sem anomalia</option>
-                      <option value="processando">Processando</option>
-                      <option value="erro">Erro</option>
-                    </select>
-                  </label>
-                  <label class="toolbar__field">
-                    <span>Severidade</span>
-                    <select id="document-severity-filter">
-                      <option value="todas">Todas</option>
-                      <option value="CRITICA">Critica</option>
-                      <option value="ALTA">Alta</option>
-                      <option value="MEDIA">Media</option>
-                    </select>
-                  </label>
+
+            <div class="table-shell">
+              <div class="table-shell__header">
+                <div>
+                  <strong>Resultados consolidados</strong>
+                  <p>A tabela destaca o contexto principal do documento e as flags encontradas em cada registro.</p>
                 </div>
               </div>
-              <div class="toolbar__cluster toolbar__cluster--actions">
-                <div class="toolbar__cluster-head">
-                  <span class="toolbar__cluster-eyebrow">Exportacao</span>
-                  <p>Baixe um recorte em Excel ou CSV para seguir a analise fora da tela.</p>
-                </div>
-                <div class="toolbar__actions">
-                  <label class="toolbar__field toolbar__field--compact">
-                    <span>Formato</span>
-                    <select id="export-format-select">
-                      <option value="excel">Excel</option>
-                      <option value="csv">CSV</option>
-                    </select>
-                  </label>
-                  <label class="toolbar__toggle" for="export-anomalies-only">
-                    <input id="export-anomalies-only" type="checkbox" />
-                    <span>Somente com anomalias</span>
-                  </label>
-                  <button id="export-button" type="button" class="button button--primary">
-                    Exportar
-                  </button>
-                </div>
-                <p id="export-feedback" class="feedback table-panel__feedback">
-                  Exporte os resultados em CSV ou Excel.
-                </p>
+              <table class="results-table">
+                <thead>
+                  <tr>
+                    <th>Arquivo</th>
+                    <th>NF</th>
+                    <th>CNPJ emitente</th>
+                    <th>Data NF</th>
+                    <th>Pagamento</th>
+                    <th>Valor</th>
+                    <th>Aprovador</th>
+                    <th>Status</th>
+                    <th>Flags</th>
+                    <th>Acoes</th>
+                  </tr>
+                </thead>
+                <tbody id="results-table-body"></tbody>
+              </table>
+              <div id="results-empty-state" class="empty-state" hidden>
+                Nenhum documento encontrado com os filtros atuais.
               </div>
             </div>
           </div>
 
-          <div class="table-shell">
-            <div class="table-shell__header">
+          <aside class="panel detail-panel is-hidden" id="detail-panel" aria-live="polite">
+            <div class="detail-panel__header">
               <div>
-                <strong>Resultados consolidados</strong>
-                <p>A tabela destaca o contexto principal do documento e as flags encontradas em cada registro.</p>
+                <p class="panel__eyebrow">Detalhes</p>
+                <h2 id="detail-title">Selecione um documento</h2>
+              </div>
+              <div class="detail-panel__actions">
+                <button id="detail-delete-button" type="button" class="button button--danger detail-panel__delete" hidden></button>
+                <button id="detail-close-button" type="button" class="button button--ghost">
+                  Fechar
+                </button>
               </div>
             </div>
-            <table class="results-table">
-              <thead>
-                <tr>
-                  <th>Arquivo</th>
-                  <th>NF</th>
-                  <th>CNPJ emitente</th>
-                  <th>Data NF</th>
-                  <th>Pagamento</th>
-                  <th>Valor</th>
-                  <th>Aprovador</th>
-                  <th>Status</th>
-                  <th>Flags</th>
-                </tr>
-              </thead>
-              <tbody id="results-table-body"></tbody>
-            </table>
-            <div id="results-empty-state" class="empty-state" hidden>
-              Nenhum documento encontrado com os filtros atuais.
-            </div>
-          </div>
-        </section>
-
-        <aside class="panel detail-panel is-hidden" id="detail-panel" aria-live="polite">
-          <div class="detail-panel__header">
+            <dl id="detail-metadata" class="detail-metadata"></dl>
             <div>
-              <p class="panel__eyebrow">Detalhes</p>
-              <h2 id="detail-title">Selecione um documento</h2>
+              <h3 class="detail-panel__subtitle">Flags detectadas</h3>
+              <div id="detail-flags" class="flags-stack"></div>
             </div>
-            <button id="detail-close-button" type="button" class="button button--ghost">
-              Fechar
-            </button>
-          </div>
-          <dl id="detail-metadata" class="detail-metadata"></dl>
-          <div>
-            <h3 class="detail-panel__subtitle">Flags detectadas</h3>
-            <div id="detail-flags" class="flags-stack"></div>
-          </div>
-        </aside>
+          </aside>
+        </section>
       </main>
     </div>
 

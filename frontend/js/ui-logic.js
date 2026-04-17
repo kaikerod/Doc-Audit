@@ -257,6 +257,8 @@
     return (items || []).map(function (item) {
       return {
         id: item.id,
+        uploadId: item.id,
+        documentoId: null,
         nomeArquivo: item.nome_arquivo,
         numeroNF: "--",
         cnpjEmitente: "--",
@@ -264,6 +266,7 @@
         dataPagamento: null,
         valor: null,
         aprovador: "--",
+        descricao: "",
         status: item.status || "processando",
         flags: [],
         resumo: "Upload recebido e aguardando o pipeline de IA."

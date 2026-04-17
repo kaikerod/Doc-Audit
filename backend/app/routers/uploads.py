@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 
 from ..config import settings
 from ..database import DbSession, get_db
 from ..models.upload import Upload
 from ..schemas.upload import UploadBatchResponse
+from ..services.upload_service import UploadNotFoundError, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
 
@@ -85,3 +86,24 @@ async def create_uploads(
         db.refresh(upload)
 
     return UploadBatchResponse(items=created_uploads)
+
+
+@router.delete("/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_upload(
+    upload_id: UUID,
+    request: Request,
+    db: DbSession = Depends(get_db),
+) -> Response:
+    try:
+        delete_upload(
+            db,
+            upload_id=upload_id,
+            ip=request.client.host if request.client else None,
+        )
+    except UploadNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upload nao encontrado.",
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

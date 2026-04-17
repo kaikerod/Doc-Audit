@@ -15,6 +15,7 @@ def log_audit_event(
     usuario: str | None = None,
     ip: str | None = None,
     payload: dict[str, Any] | list[Any] | None = None,
+    commit: bool = True,
 ) -> AuditLog:
     """Persiste um evento de auditoria e retorna o registro criado."""
     audit_log = AuditLog(
@@ -26,6 +27,9 @@ def log_audit_event(
         payload=payload,
     )
     db.add(audit_log)
-    db.commit()
-    db.refresh(audit_log)
+    if commit:
+        db.commit()
+        db.refresh(audit_log)
+    else:
+        db.flush()
     return audit_log
