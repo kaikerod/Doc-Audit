@@ -12,8 +12,7 @@ When implementation begins, follow the structure defined in the PRD:
 ## Build, Test, and Development Commands
 There is no runnable app in the repository yet. When scaffolding starts, prefer the commands below and document any additions in the PR:
 - `docker compose up --build` to start FastAPI, PostgreSQL, Redis, and workers locally
-- `uvicorn backend.app.main:app --reload` to run the API without Docker
-- `alembic upgrade head` to apply database migrations
+- `docker compose exec web alembic upgrade head` to apply database migrations
 - `pytest` to run backend tests
 
 Keep commands copy-pasteable and aligned with the structure in `PRD.md`.
