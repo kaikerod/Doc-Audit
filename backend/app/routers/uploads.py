@@ -50,7 +50,12 @@ def _validate_upload_file(filename: str, content: bytes) -> None:
         )
 
 
-@router.post("", response_model=UploadBatchResponse)
+@router.post(
+    "",
+    response_model=UploadBatchResponse,
+    summary="Realiza o upload de múltiplos arquivos",
+    description="Recebe até 20 arquivos .txt para processamento. Cada arquivo é validado por extensão e tamanho antes de ser enfileirado.",
+)
 async def create_uploads(
     files: list[UploadFile] = File(...),
     db: DbSession = Depends(get_db),
@@ -88,7 +93,12 @@ async def create_uploads(
     return UploadBatchResponse(items=created_uploads)
 
 
-@router.delete("/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{upload_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove um upload",
+    description="Exclui o registro do upload e o arquivo físico associado. Esta ação é registrada no log de auditoria.",
+)
 def remove_upload(
     upload_id: UUID,
     request: Request,

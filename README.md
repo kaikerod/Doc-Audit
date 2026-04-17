@@ -195,6 +195,15 @@ docker compose exec web alembic upgrade head
 
 ---
 
+## 📖 Documentação da API (Swagger)
+
+A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode acessar a documentação interativa para testar os endpoints diretamente pelo navegador:
+
+- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) — Interface interativa (recomendado).
+- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc) — Documentação estática e detalhada.
+
+---
+
 ## 🌐 Endpoints da API
 
 ### Uploads
@@ -521,6 +530,15 @@ docker compose exec web alembic upgrade head
 | API Docs (Swagger UI) | `http://localhost:8000/docs` |
 | API Docs (ReDoc) | `http://localhost:8000/redoc` |
 | Health Check | `http://localhost:8000/api/v1/health` |
+
+---
+
+## 📖 API Documentation (Swagger)
+
+DocAudit's API is fully documented via **Swagger/OpenAPI**. You can access the interactive documentation to test endpoints directly through your browser:
+
+- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) — Interactive interface (recommended).
+- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc) — Detailed static documentation.
 
 ---
 

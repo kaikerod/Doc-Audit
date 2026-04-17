@@ -300,6 +300,15 @@ CREATE TABLE audit_log (
 |---|---|---|
 | `GET` | `/api/v1/health` | Status da aplicação e dependências |
 
+#### 6.6 Documentação (Swagger)
+A API deve ser auto-documentada utilizando o padrão OpenAPI 3.0.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/docs` | Swagger UI (documentação interativa) |
+| `GET` | `/redoc` | ReDoc (documentação detalhada) |
+| `GET` | `/openapi.json` | Schema OpenAPI puro |
+
 ---
 
 ## 7. Fluxo de Processamento

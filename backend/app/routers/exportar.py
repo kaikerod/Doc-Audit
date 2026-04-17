@@ -45,7 +45,11 @@ def _log_export_event(
     )
 
 
-@router.get("/csv")
+@router.get(
+    "/csv",
+    summary="Exporta documentos em CSV",
+    description="Gera um arquivo CSV (UTF-8 com BOM) contendo todos os documentos analisados ou apenas aqueles com anomalias.",
+)
 def exportar_csv(
     request: Request,
     somente_com_anomalias: bool = Query(default=False),
@@ -66,7 +70,11 @@ def exportar_csv(
     )
 
 
-@router.get("/excel")
+@router.get(
+    "/excel",
+    summary="Exporta documentos em Excel",
+    description="Gera uma planilha .xlsx formatada com os resultados da análise. Inclui cores de destaque para anomalias.",
+)
 def exportar_excel(
     request: Request,
     somente_com_anomalias: bool = Query(default=False),
@@ -87,7 +95,11 @@ def exportar_excel(
     )
 
 
-@router.get("/log")
+@router.get(
+    "/log",
+    summary="Exporta log de auditoria",
+    description="Exporta todo o histórico de ações realizadas no sistema nos formatos CSV ou Excel.",
+)
 def exportar_log_auditoria(
     request: Request,
     formato: Literal["csv", "excel"] = Query(default="csv"),

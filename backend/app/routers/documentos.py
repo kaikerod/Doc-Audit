@@ -71,7 +71,12 @@ def _map_upload_to_list_item(upload: Upload) -> DocumentoListItem:
     )
 
 
-@router.get("", response_model=DocumentoListResponse)
+@router.get(
+    "",
+    response_model=DocumentoListResponse,
+    summary="Lista todos os documentos processados",
+    description="Retorna uma lista paginada de todos os uploads realizados, incluindo os dados extraídos pela IA e as flags de anomalia detectadas.",
+)
 def list_documentos(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),

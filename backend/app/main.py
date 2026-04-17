@@ -19,7 +19,43 @@ from .routers.uploads import router as uploads_router
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+tags_metadata = [
+    {
+        "name": "uploads",
+        "description": "Gerenciamento de entrada de arquivos TXT e validações iniciais.",
+    },
+    {
+        "name": "documentos",
+        "description": "Consulta e listagem dos documentos processados pela IA e suas respectivas anomalias.",
+    },
+    {
+        "name": "exportacao",
+        "description": "Geração de relatórios em CSV e Excel para auditoria externa.",
+    },
+    {
+        "name": "health",
+        "description": "Endpoints de monitoramento de integridade da API e banco de dados.",
+    },
+    {
+        "name": "meta",
+        "description": "Informações básicas sobre a aplicação.",
+    },
+]
+
+app = FastAPI(
+    title=settings.app_name,
+    description="Sistema de Análise e Auditoria de Documentos Fiscais com IA. Esta API permite o envio de arquivos TXT, extração de dados via IA e detecção de anomalias.",
+    version=settings.app_version,
+    contact={
+        "name": "DocAudit Support",
+        "email": "support@docaudit.local",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=tags_metadata,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_allow_origins),
