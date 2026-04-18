@@ -6,6 +6,7 @@ const {
   formatCurrencyBRL,
   getSeverityBadgeClass,
   mapApiDocumentToViewModel,
+  validateUploadBatch,
   validateUploadFile
 } = require("../frontend/js/ui-logic.js");
 
@@ -119,6 +120,15 @@ describe("DocAudit UI logic", () => {
     expect(result).toEqual({
       valid: false,
       reason: "Apenas arquivos .txt s\u00e3o permitidos."
+    });
+  });
+
+  test("validateUploadBatch rejeita lotes acima do limite", () => {
+    const result = validateUploadBatch(new Array(251).fill({}), 250);
+
+    expect(result).toEqual({
+      valid: false,
+      reason: "Limite maximo de 250 arquivos por envio."
     });
   });
 

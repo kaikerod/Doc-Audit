@@ -137,7 +137,7 @@ def test_exportacao_documentos_limpa_logs_anteriores_e_registra_apenas_exportaca
     }
 
 
-def test_exportacao_excel_nao_carrega_historico_anterior_no_arquivo(db_session) -> None:
+def test_exportacao_excel_inclui_snapshot_do_log_de_auditoria(db_session) -> None:
     _seed_export_data(db_session)
     app.dependency_overrides[get_db] = lambda: db_session
 
@@ -150,8 +150,9 @@ def test_exportacao_excel_nao_carrega_historico_anterior_no_arquivo(db_session) 
     workbook_xml = _read_xlsx_xml_files(response.content)
 
     assert response.status_code == 200
-    assert "upload_realizado" not in workbook_xml
-    assert "qa@test.local" not in workbook_xml
+    assert "Log Auditoria" in workbook_xml
+    assert "upload_realizado" in workbook_xml
+    assert "qa@test.local" in workbook_xml
 
 
 @pytest.mark.parametrize(

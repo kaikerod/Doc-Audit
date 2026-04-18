@@ -253,6 +253,22 @@
     };
   }
 
+  function validateUploadBatch(files, maxFiles) {
+    var safeFiles = Array.isArray(files) ? files : [];
+
+    if (safeFiles.length > maxFiles) {
+      return {
+        valid: false,
+        reason: "Limite maximo de " + maxFiles + " arquivos por envio."
+      };
+    }
+
+    return {
+      valid: true,
+      reason: ""
+    };
+  }
+
   function buildApiHealthMeta(payload) {
     var safePayload = payload || {};
     var features = safePayload.features || {};
@@ -340,6 +356,7 @@
     matchesDocumentSearch: matchesDocumentSearch,
     normalizeKeyword: normalizeKeyword,
     summarizeFlags: summarizeFlags,
+    validateUploadBatch: validateUploadBatch,
     validateUploadFile: validateUploadFile
   };
 });

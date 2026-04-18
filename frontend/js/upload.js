@@ -56,6 +56,7 @@
     var feedbackNode = options.feedbackNode;
     var idleMessage = options.idleMessage || "Nenhum envio em andamento.";
     var onUploadSuccess = options.onUploadSuccess;
+    var maxFiles = options.maxFiles || 250;
     var maxSizeBytes = options.maxSizeBytes || (5 * 1024 * 1024);
     var availability = options.initialAvailability || {
       enabled: true,
@@ -94,6 +95,13 @@
           availability.message || "Uploads indisponiveis no momento.",
           "error"
         );
+        fileInput.value = "";
+        return;
+      }
+
+      var batchValidation = root.DocAuditUiLogic.validateUploadBatch(files, maxFiles);
+      if (!batchValidation.valid) {
+        setFeedback(feedbackNode, batchValidation.reason, "error");
         fileInput.value = "";
         return;
       }

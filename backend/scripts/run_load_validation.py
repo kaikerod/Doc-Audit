@@ -301,7 +301,7 @@ def main() -> int:
     report = run_load_validation(
         base_url=args.base_url,
         batches=max(1, args.batches),
-        batch_size=max(1, min(20, args.batch_size)),
+        batch_size=max(1, min(250, args.batch_size)),
         pause_between_batches_seconds=max(0.0, args.pause_between_batches_seconds),
         poll_interval_seconds=max(0.5, args.poll_interval_seconds),
         timeout_seconds=max(5.0, args.timeout_seconds),

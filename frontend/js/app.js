@@ -115,6 +115,7 @@
         message: "Validando a disponibilidade da API antes de liberar uploads.",
         tone: "busy"
       },
+      maxFiles: 250,
       maxSizeBytes: 5 * 1024 * 1024,
       onUploadSuccess: async function () {
         var documents = await loadDocuments(tableController);

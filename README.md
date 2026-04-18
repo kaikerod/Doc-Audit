@@ -40,7 +40,7 @@ Equipes financeiras, de compliance e auditoria interna de pequenas e médias emp
 
 | Módulo | Descrição |
 |--------|-----------|
-| 📤 **Upload de Arquivos** | Drag-and-drop ou seleção manual de até 20 arquivos `.txt` por vez, com barra de progresso individual |
+| 📤 **Upload de Arquivos** | Drag-and-drop ou seleção manual de até 250 arquivos `.txt` por vez, com barra de progresso individual |
 | 🤖 **Extração via IA** | Campos extraídos automaticamente (NF, CNPJ, datas, valor, aprovador) via OpenRouter |
 | 🚨 **Detecção de Anomalias** | 8 regras de negócio com severidade CRÍTICA, ALTA e MÉDIA |
 | 📊 **Dashboard de Resultados** | Tabela filtrável, pesquisável e com badges coloridos por severidade de flag |
@@ -303,6 +303,7 @@ Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
 | `REDIS_URL` | URL do Redis | `redis://redis:6379/0` |
 | `OPENROUTER_API_KEY` | Chave da API OpenRouter | *(obrigatório)* |
 | `OPENROUTER_MODEL` | Modelo de IA a utilizar | `mistralai/ministral-3b-2512` |
+| `UPLOAD_MAX_FILES` | Quantidade máxima de arquivos `.txt` aceitos por envio | `250` |
 | `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
 | `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |
@@ -349,7 +350,7 @@ Finance, compliance, and internal audit teams at small and medium-sized business
 
 | Module | Description |
 |--------|-------------|
-| 📤 **File Upload** | Drag-and-drop or manual selection of up to 20 `.txt` files at a time, with per-file progress bars |
+| 📤 **File Upload** | Drag-and-drop or manual selection of up to 250 `.txt` files at a time, with per-file progress bars |
 | 🤖 **AI Extraction** | Fields extracted automatically (invoice number, CNPJ, dates, amount, approver) via OpenRouter |
 | 🚨 **Anomaly Detection** | 8 business rules with CRITICAL, HIGH, and MEDIUM severity levels |
 | 📊 **Results Dashboard** | Filterable, searchable table with colored severity badges |
@@ -612,6 +613,7 @@ Tests live in `tests/` and follow the `test_<module>.py` convention.
 | `REDIS_URL` | Redis URL | `redis://redis:6379/0` |
 | `OPENROUTER_API_KEY` | OpenRouter API key | *(required)* |
 | `OPENROUTER_MODEL` | AI model to use | `mistralai/ministral-3b-2512` |
+| `UPLOAD_MAX_FILES` | Maximum number of `.txt` files accepted per upload request | `250` |
 | `OPENROUTER_REFERER` | Referrer URL for OpenRouter | — |
 | `OPENROUTER_TITLE` | Application title in OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Primary queue name observed by diagnostics | `celery` |

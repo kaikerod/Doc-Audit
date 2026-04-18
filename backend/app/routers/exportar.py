@@ -81,11 +81,7 @@ def exportar_excel(
     somente_com_anomalias: bool = Query(default=False),
     db: DbSession = Depends(get_db),
 ) -> Response:
-    export_file = export_documentos_excel(
-        db,
-        somente_com_anomalias=somente_com_anomalias,
-        audit_log_rows=[],
-    )
+    export_file = export_documentos_excel(db, somente_com_anomalias=somente_com_anomalias)
     clear_audit_logs(db, commit=False)
     _log_export_event(
         db,

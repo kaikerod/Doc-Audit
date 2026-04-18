@@ -75,7 +75,10 @@ def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
     "",
     response_model=UploadBatchResponse,
     summary="Realiza o upload de múltiplos arquivos",
-    description="Recebe até 20 arquivos .txt para processamento. Cada arquivo é validado por extensão e tamanho antes de ser enfileirado.",
+    description=(
+        f"Recebe ate {settings.upload_max_files} arquivos .txt para processamento. "
+        "Cada arquivo e validado por extensao e tamanho antes de ser enfileirado."
+    ),
 )
 async def create_uploads(
     request: Request,

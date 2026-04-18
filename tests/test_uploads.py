@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from backend.app.database import get_db
+from backend.app.config import settings
 from backend.app.main import app
 from backend.app.models.audit_log import AuditLog
 from backend.app.models.documento import Documento
@@ -185,6 +186,28 @@ def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Apenas arquivos .txt sao permitidos."}
+    assert db_session.scalar(select(Upload)) is None
+
+
+def test_upload_batch_acima_do_limite_retorna_400(db_session, upload_storage_dir: Path) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    files = [
+        ("files", (f"nota-{index}.txt", b"conteudo", "text/plain"))
+        for index in range(settings.upload_max_files + 1)
+    ]
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/api/v1/uploads", files=files)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": f"Limite maximo de {settings.upload_max_files} arquivos por envio."
+    }
     assert db_session.scalar(select(Upload)) is None
 
 

@@ -62,7 +62,7 @@ Equipes financeiras, de compliance e auditoria interna de pequenas e médias emp
 **Comportamento:**
 - Aceitar arquivos `.txt` via drag-and-drop ou seleção manual
 - Validar tamanho máximo (ex: 5 MB por arquivo) e extensão
-- Suportar upload múltiplo (batch) — até 20 arquivos por vez
+- Suportar upload múltiplo (batch) — até 250 arquivos por vez
 - Exibir barra de progresso individual por arquivo
 - Gerar um `upload_id` único por sessão de upload
 - Salvar o arquivo temporariamente no servidor e registrar no banco
