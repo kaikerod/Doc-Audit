@@ -11,7 +11,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-docaudit}:${POSTGRES_PASSWORD:-docaudit}@db:5432/${POSTGRES_DB:-docaudit}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}
     ports:
       - "8000:8000"
     volumes:

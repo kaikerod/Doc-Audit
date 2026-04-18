@@ -82,7 +82,7 @@ def test_extract_document_data_uses_minimax_defaults_and_openrouter_headers(
     mock_post: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(settings, "openrouter_model", "minimax/minimax-m2.5:free")
+    monkeypatch.setattr(settings, "openrouter_model", "google/gemma-4-31b-it:free")
     monkeypatch.setattr(settings, "openrouter_referer", "https://docaudit.local")
     monkeypatch.setattr(settings, "openrouter_title", "DocAudit")
 
@@ -131,7 +131,7 @@ def test_extract_document_data_uses_minimax_defaults_and_openrouter_headers(
     assert isinstance(result, DocumentExtractionResult)
     assert result.numero_nf == "NF-456"
     assert result.aprovador == "Joao Souza"
-    assert mock_post.call_args.kwargs["json"]["model"] == "minimax/minimax-m2.5:free"
+    assert mock_post.call_args.kwargs["json"]["model"] == "google/gemma-4-31b-it:free"
     assert mock_post.call_args.kwargs["headers"]["HTTP-Referer"] == "https://docaudit.local"
     assert mock_post.call_args.kwargs["headers"]["X-OpenRouter-Title"] == "DocAudit"
 

@@ -51,7 +51,7 @@ class Settings:
     database_url: str = _normalize_database_url(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL))
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
-    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "minimax/minimax-m2.5:free")
+    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
     openrouter_api_url: str = os.getenv(
         "OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions"
     )
