@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DocAudit">
+  <defs>
+    <linearGradient id="docaudit-favicon-bg" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1c6759" />
+      <stop offset="1" stop-color="#10493f" />
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="16" fill="#10191c" />
+  <path
+    d="M22 16h14l8 8v24a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4V20a4 4 0 0 1 4-4Z"
+    fill="url(#docaudit-favicon-bg)"
+  />
+  <path d="M36 16v8h8" fill="none" stroke="#efe1c7" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" />
+  <path d="M25 31h14M25 38h14" fill="none" stroke="#efe1c7" stroke-linecap="round" stroke-width="3" />
+  <circle cx="45" cy="45" r="7" fill="none" stroke="#b66a2c" stroke-width="3" />
+  <path d="m50 50 5 5" fill="none" stroke="#b66a2c" stroke-linecap="round" stroke-width="3" />
+</svg>

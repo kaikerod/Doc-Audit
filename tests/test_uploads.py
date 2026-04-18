@@ -87,7 +87,7 @@ def test_upload_txt_valido_returns_200(
     assert saved_documento.status_extracao == "concluido"
 
 
-def test_upload_does_not_persist_records_when_openrouter_fails(
+def test_upload_persists_error_record_when_openrouter_times_out(
     db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     app.dependency_overrides[get_db] = lambda: db_session
@@ -113,15 +113,26 @@ def test_upload_does_not_persist_records_when_openrouter_fails(
         finally:
             app.dependency_overrides.clear()
 
-    assert response.status_code == 504
-    assert response.json() == {"detail": "Timeout ao chamar OpenRouter apos 3 tentativas."}
-    assert db_session.scalar(select(Upload)) is None
+    assert response.status_code == 200
+    assert response.json()["items"][0]["status"] == "erro"
+
+    saved_upload = db_session.scalar(select(Upload))
+    assert saved_upload is not None
+    assert saved_upload.status == "erro"
     assert db_session.scalar(select(Documento)) is None
-    assert db_session.scalar(select(AuditLog)) is None
-    assert write_attempts == []
+    assert write_attempts == [Path(saved_upload.caminho_arquivo)]
+
+    audit_log = db_session.scalar(select(AuditLog))
+    assert audit_log is not None
+    assert audit_log.evento == "processamento_erro"
+    assert audit_log.payload == {
+        "upload_id": str(saved_upload.id),
+        "arquivo": "nota-fiscal.txt",
+        "erro": "Timeout ao chamar OpenRouter apos 3 tentativas.",
+    }
 
 
-def test_upload_preserves_openrouter_http_status(
+def test_upload_persists_error_record_when_openrouter_returns_http_error(
     db_session, upload_storage_dir: Path
 ) -> None:
     app.dependency_overrides[get_db] = lambda: db_session
@@ -143,12 +154,51 @@ def test_upload_preserves_openrouter_http_status(
         finally:
             app.dependency_overrides.clear()
 
-    assert response.status_code == 429
-    assert response.json() == {
-        "detail": "O provedor de IA atingiu o limite de requisicoes no momento. Aguarde alguns segundos e tente novamente."
-    }
-    assert db_session.scalar(select(Upload)) is None
+    assert response.status_code == 200
+    assert response.json()["items"][0]["status"] == "erro"
+
+    saved_upload = db_session.scalar(select(Upload))
+    assert saved_upload is not None
+    assert saved_upload.status == "erro"
     assert db_session.scalar(select(Documento)) is None
+
+
+def test_upload_persists_successful_and_failed_files_in_same_batch(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+    monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
+
+    with patch(
+        "backend.app.services.document_processing_service.extract_document_data",
+        side_effect=[
+            _build_extraction_result(),
+            OpenRouterUpstreamError(
+                "O provedor de IA retornou um erro temporario. Tente novamente em instantes.",
+                status_code=503,
+            ),
+        ],
+    ):
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[
+                        ("files", ("nota-ok.txt", b"conteudo ok", "text/plain")),
+                        ("files", ("nota-erro.txt", b"conteudo erro", "text/plain")),
+                    ],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert [item["status"] for item in response.json()["items"]] == ["concluido", "erro"]
+
+    uploads = db_session.scalars(select(Upload).order_by(Upload.nome_arquivo.asc())).all()
+    assert [upload.nome_arquivo for upload in uploads] == ["nota-erro.txt", "nota-ok.txt"]
+    assert [upload.status for upload in uploads] == ["erro", "concluido"]
+    assert db_session.scalar(select(Documento).where(Documento.numero_nf == "NF-2026-001")) is not None
 
 
 def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 import time
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -35,6 +37,36 @@ class OpenRouterUpstreamError(IAServiceError):
     def __init__(self, message: str, *, status_code: int = 502) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+def build_ai_health_check() -> tuple[str, bool, str | None]:
+    if not settings.openrouter_api_key.strip():
+        return (
+            "not_configured",
+            False,
+            "OPENROUTER_API_KEY nao configurada. Configure a integracao de IA para habilitar uploads.",
+        )
+
+    parsed_url = urlparse(settings.openrouter_api_url)
+    if not parsed_url.hostname:
+        return (
+            "misconfigured",
+            False,
+            "OPENROUTER_API_URL invalida. Revise a configuracao da integracao de IA.",
+        )
+
+    port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
+    timeout_seconds = max(1.0, min(settings.openrouter_timeout_seconds, 3.0))
+
+    try:
+        with socket.create_connection((parsed_url.hostname, port), timeout=timeout_seconds):
+            return ("ok", True, None)
+    except OSError:
+        return (
+            "unreachable",
+            False,
+            "Falha ao conectar ao OpenRouter. Verifique rede, DNS e firewall do backend.",
+        )
 
 
 def _build_openrouter_headers() -> dict[str, str]:

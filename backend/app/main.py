@@ -16,8 +16,10 @@ from .database import Base, engine
 from .routers.documentos import router as documentos_router
 from .routers.exportar import router as exportar_router
 from .routers.uploads import router as uploads_router
+from .services.ia_service import build_ai_health_check
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+FAVICON_PATH = FRONTEND_DIR / "favicon.svg"
 
 tags_metadata = [
     {
@@ -86,6 +88,15 @@ def read_root() -> Response:
     return JSONResponse({"name": settings.app_name, "version": settings.app_version})
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+def serve_favicon() -> Response:
+    if FAVICON_PATH.exists():
+        return FileResponse(FAVICON_PATH, media_type="image/svg+xml")
+
+    return Response(status_code=204)
+
+
 @app.get(f"{settings.api_v1_prefix}/health/live", tags=["health"])
 def liveness_check() -> dict[str, str]:
     return {"status": "alive", "app": settings.app_name}
@@ -93,10 +104,16 @@ def liveness_check() -> dict[str, str]:
 
 @app.get(f"{settings.api_v1_prefix}/health", tags=["health"])
 def readiness_check() -> JSONResponse:
+    ai_status, uploads_enabled, ai_detail = build_ai_health_check()
+
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
+        detail_parts = [str(exc)]
+        if ai_detail:
+            detail_parts.append(ai_detail)
+
         return JSONResponse(
             status_code=503,
             content={
@@ -105,19 +122,32 @@ def readiness_check() -> JSONResponse:
                 "checks": {
                     "api": "ok",
                     "database": "error",
+                    "ai": ai_status,
                 },
-                "detail": str(exc),
+                "features": {
+                    "uploads_enabled": False,
+                },
+                "detail": " ".join(detail_parts),
             },
         )
 
+    content = {
+        "status": "ok" if uploads_enabled else "limited",
+        "app": settings.app_name,
+        "checks": {
+            "api": "ok",
+            "database": "ok",
+            "ai": ai_status,
+        },
+        "features": {
+            "uploads_enabled": uploads_enabled,
+        },
+    }
+
+    if ai_detail:
+        content["detail"] = ai_detail
+
     return JSONResponse(
         status_code=200,
-        content={
-            "status": "ok",
-            "app": settings.app_name,
-            "checks": {
-                "api": "ok",
-                "database": "ok",
-            },
-        },
+        content=content,
     )

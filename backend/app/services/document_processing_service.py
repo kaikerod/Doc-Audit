@@ -33,6 +33,13 @@ class ProcessedUploadBundle:
     file_path: Path
 
 
+@dataclass(slots=True)
+class FailedUploadBundle:
+    upload: Upload
+    file_path: Path
+    error_message: str
+
+
 def decode_txt_content(content: bytes) -> str:
     try:
         return content.decode("utf-8")
@@ -117,6 +124,8 @@ def build_processed_upload_bundle(
     storage_dir: Path,
     extra_existing_invoice_keys: set[tuple[str, str]] | None = None,
 ) -> ProcessedUploadBundle:
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
     conteudo_bruto = decode_txt_content(content)
     extraction = extract_document_data(conteudo_bruto)
     extraction_payload = extraction.model_dump(mode="json")
@@ -169,6 +178,44 @@ def build_processed_upload_bundle(
         documento=documento,
         anomalias=anomalias,
         file_path=file_path,
+    )
+
+
+def build_failed_upload_bundle(
+    *,
+    original_name: str,
+    content: bytes,
+    storage_dir: Path,
+    error_message: str,
+) -> FailedUploadBundle:
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
+    upload_id = uuid4()
+    stored_name = f"{uuid4()}.txt"
+    file_path = storage_dir / stored_name
+
+    upload = Upload(
+        id=upload_id,
+        nome_arquivo=original_name,
+        caminho_arquivo=str(file_path.resolve()),
+        hash_sha256=hashlib.sha256(content).hexdigest(),
+        tamanho_bytes=len(content),
+        status="erro",
+    )
+
+    try:
+        file_path.write_bytes(content)
+    except Exception:
+        try:
+            file_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+    return FailedUploadBundle(
+        upload=upload,
+        file_path=file_path,
+        error_message=error_message,
     )
 
 
@@ -243,9 +290,49 @@ def persist_processed_uploads(
         db.refresh(processed_upload.upload)
 
 
+def persist_failed_uploads(
+    db: DbSession,
+    failed_uploads: list[FailedUploadBundle],
+    *,
+    usuario: str | None = None,
+    ip: str | None = None,
+) -> None:
+    for failed_upload in failed_uploads:
+        upload = failed_upload.upload
+
+        db.add(upload)
+        log_audit_event(
+            db,
+            evento="processamento_erro",
+            entidade_tipo="upload",
+            entidade_id=str(upload.id),
+            usuario=usuario,
+            ip=ip,
+            payload={
+                "upload_id": str(upload.id),
+                "arquivo": upload.nome_arquivo,
+                "erro": failed_upload.error_message,
+            },
+            commit=False,
+        )
+
+    db.commit()
+
+    for failed_upload in failed_uploads:
+        db.refresh(failed_upload.upload)
+
+
 def cleanup_processed_uploads(processed_uploads: list[ProcessedUploadBundle]) -> None:
     for processed_upload in processed_uploads:
         try:
             processed_upload.file_path.unlink()
+        except FileNotFoundError:
+            continue
+
+
+def cleanup_failed_uploads(failed_uploads: list[FailedUploadBundle]) -> None:
+    for failed_upload in failed_uploads:
+        try:
+            failed_upload.file_path.unlink()
         except FileNotFoundError:
             continue

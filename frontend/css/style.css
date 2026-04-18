@@ -561,6 +561,31 @@ select:focus-visible,
   outline: none;
 }
 
+.dropzone.is-disabled,
+.dropzone.is-disabled:hover,
+.dropzone.is-disabled:focus-visible {
+  transform: none;
+  border-color: rgba(24, 32, 34, 0.14);
+  background:
+    linear-gradient(140deg, rgba(24, 32, 34, 0.04), rgba(255, 255, 255, 0.54)),
+    rgba(255, 255, 255, 0.4);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.dropzone.is-disabled::before {
+  opacity: 0.4;
+}
+
+.dropzone.is-disabled .dropzone__icon {
+  background: linear-gradient(160deg, #48565a, #2f3d41);
+}
+
+.dropzone.is-disabled .dropzone__content strong,
+.dropzone.is-disabled .dropzone__content p {
+  opacity: 0.76;
+}
+
 .dropzone__icon {
   position: relative;
   z-index: 1;
@@ -805,7 +830,7 @@ select:focus-visible,
 
 .button:disabled {
   opacity: 0.72;
-  cursor: wait;
+  cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }

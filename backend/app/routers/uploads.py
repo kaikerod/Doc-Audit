@@ -11,10 +11,12 @@ from ..database import DbSession, get_db
 from ..models.upload import Upload
 from ..schemas.upload import UploadBatchResponse, UploadListResponse, UploadRead
 from ..services.document_processing_service import (
-    ProcessedUploadBundle,
     TxtDecodingError,
     build_processed_upload_bundle,
+    build_failed_upload_bundle,
+    cleanup_failed_uploads,
     cleanup_processed_uploads,
+    persist_failed_uploads,
     persist_processed_uploads,
 )
 from ..services.ia_service import (
@@ -87,9 +89,9 @@ async def create_uploads(
 ) -> UploadBatchResponse:
     _validate_upload_count(files)
 
-    prepared_uploads: list[ProcessedUploadBundle] = []
     validated_files: list[tuple[str, bytes]] = []
-    pending_invoice_keys: set[tuple[str, str]] = set()
+    persisted_uploads: list[Upload] = []
+    request_ip = request.client.host if request.client else None
 
     for uploaded_file in files:
         original_name = Path(uploaded_file.filename or "").name
@@ -98,56 +100,49 @@ async def create_uploads(
         _validate_upload_file(original_name, content)
         validated_files.append((original_name, content))
 
-    try:
-        for original_name, content in validated_files:
+    for original_name, content in validated_files:
+        try:
             prepared_upload = build_processed_upload_bundle(
                 db,
                 original_name=original_name,
                 content=content,
                 storage_dir=storage_dir,
-                extra_existing_invoice_keys=pending_invoice_keys,
             )
-            prepared_uploads.append(prepared_upload)
+            try:
+                persist_processed_uploads(db, [prepared_upload], ip=request_ip)
+            except Exception:
+                db.rollback()
+                cleanup_processed_uploads([prepared_upload])
+                raise
 
-            if prepared_upload.documento.numero_nf and prepared_upload.documento.cnpj_emitente:
-                pending_invoice_keys.add(
-                    (
-                        prepared_upload.documento.numero_nf,
-                        prepared_upload.documento.cnpj_emitente,
-                    )
-                )
+            persisted_uploads.append(prepared_upload.upload)
+        except (
+            TxtDecodingError,
+            OpenRouterConfigurationError,
+            OpenRouterTimeoutError,
+            OpenRouterUpstreamError,
+            IAServiceError,
+        ) as exc:
+            db.rollback()
+            failed_upload = build_failed_upload_bundle(
+                original_name=original_name,
+                content=content,
+                storage_dir=storage_dir,
+                error_message=str(exc),
+            )
+            try:
+                persist_failed_uploads(db, [failed_upload], ip=request_ip)
+            except Exception:
+                db.rollback()
+                cleanup_failed_uploads([failed_upload])
+                raise
 
-        persist_processed_uploads(
-            db,
-            prepared_uploads,
-            ip=request.client.host if request.client else None,
-        )
-    except TxtDecodingError as exc:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except OpenRouterConfigurationError as exc:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except OpenRouterTimeoutError as exc:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
-    except OpenRouterUpstreamError as exc:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    except IAServiceError as exc:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    except Exception:
-        db.rollback()
-        cleanup_processed_uploads(prepared_uploads)
-        raise
+            persisted_uploads.append(failed_upload.upload)
+        except Exception:
+            db.rollback()
+            raise
 
-    return UploadBatchResponse(items=[processed_upload.upload for processed_upload in prepared_uploads])
+    return UploadBatchResponse(items=persisted_uploads)
 
 
 @router.get(

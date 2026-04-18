@@ -1,12 +1,27 @@
 (function (root) {
-  async function updateApiHealth(indicator) {
+  function applyOfflineApiHealth(indicator, copyNode) {
+    indicator.textContent = "Offline";
+    indicator.className = "hero__status-pill hero__status-pill--error";
+    copyNode.textContent = "A API ou o banco de dados n\u00e3o responderam ao health check.";
+  }
+
+  async function updateApiHealth(indicator, copyNode, uploadController) {
     try {
-      await root.DocAuditApi.fetchApiHealth();
-      indicator.textContent = "Dispon\u00edvel";
-      indicator.className = "hero__status-pill hero__status-pill--success";
+      var payload = await root.DocAuditApi.fetchApiHealth();
+      var meta = root.DocAuditUiLogic.buildApiHealthMeta(payload);
+      indicator.textContent = meta.label;
+      indicator.className = meta.className;
+      copyNode.textContent = meta.description;
+      uploadController.setAvailability({
+        enabled: meta.uploadsEnabled,
+        message: meta.uploadMessage
+      });
     } catch (_error) {
-      indicator.textContent = "Offline";
-      indicator.className = "hero__status-pill hero__status-pill--error";
+      applyOfflineApiHealth(indicator, copyNode);
+      uploadController.setAvailability({
+        enabled: false,
+        message: "Uploads indisponiveis porque a API nao respondeu ao health check."
+      });
     }
   }
 
@@ -16,6 +31,8 @@
   }
 
   function init() {
+    var apiHealthIndicator = document.getElementById("api-health-indicator");
+    var apiHealthCopy = document.getElementById("api-health-copy");
     var tableController = root.DocAuditTable.createTableController({
       initialDocuments: [],
       dashboardGrid: document.getElementById("results-layout"),
@@ -49,11 +66,17 @@
       }
     });
 
-    root.DocAuditUpload.createUploadController({
+    var uploadController = root.DocAuditUpload.createUploadController({
       dropzone: document.getElementById("upload-dropzone"),
       fileInput: document.getElementById("upload-file-input"),
       browseButton: document.getElementById("upload-browse-button"),
       feedbackNode: document.getElementById("upload-feedback"),
+      idleMessage: "Nenhum envio em andamento.",
+      initialAvailability: {
+        enabled: false,
+        message: "Validando a disponibilidade da API antes de liberar uploads.",
+        tone: "busy"
+      },
       maxSizeBytes: 5 * 1024 * 1024,
       onUploadSuccess: async function () {
         await loadDocuments(tableController);
@@ -71,7 +94,7 @@
       tableController.clearSelection();
     });
 
-    updateApiHealth(document.getElementById("api-health-indicator"));
+    updateApiHealth(apiHealthIndicator, apiHealthCopy, uploadController);
     loadDocuments(tableController).catch(function (error) {
       console.error(error);
     });

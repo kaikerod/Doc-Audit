@@ -101,6 +101,17 @@
   }
 
   async function uploadTxtFiles(files) {
+    const healthPayload = await fetchApiHealth();
+    const uploadsEnabled = !healthPayload.features || healthPayload.features.uploads_enabled !== false;
+
+    if (!uploadsEnabled) {
+      const detail =
+        healthPayload && typeof healthPayload.detail === "string" && healthPayload.detail.trim()
+          ? healthPayload.detail.trim()
+          : "Uploads indispon\u00edveis no momento.";
+      throw new Error(detail);
+    }
+
     const formData = new FormData();
     files.forEach(function (file) {
       formData.append("files", file);

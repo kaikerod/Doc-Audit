@@ -1,4 +1,5 @@
 const {
+  buildApiHealthMeta,
   buildExportPath,
   buildDashboardStats,
   filterDocuments,
@@ -29,6 +30,41 @@ describe("DocAudit UI logic", () => {
       withFlags: 2,
       critical: 1,
       processing: 1
+    });
+  });
+
+  test("buildApiHealthMeta sinaliza uploads bloqueados quando a IA nao esta configurada", () => {
+    expect(
+      buildApiHealthMeta({
+        status: "limited",
+        features: {
+          uploads_enabled: false
+        },
+        detail: "OPENROUTER_API_KEY nao configurada."
+      })
+    ).toEqual({
+      label: "IA pendente",
+      className: "hero__status-pill hero__status-pill--pending",
+      description: "OPENROUTER_API_KEY nao configurada.",
+      uploadsEnabled: false,
+      uploadMessage: "OPENROUTER_API_KEY nao configurada."
+    });
+  });
+
+  test("buildApiHealthMeta libera uploads quando a API esta pronta", () => {
+    expect(
+      buildApiHealthMeta({
+        status: "ok",
+        features: {
+          uploads_enabled: true
+        }
+      })
+    ).toEqual({
+      label: "Dispon\u00edvel",
+      className: "hero__status-pill hero__status-pill--success",
+      description: "API e pipeline de an\u00e1lise prontos para receber arquivos.",
+      uploadsEnabled: true,
+      uploadMessage: ""
     });
   });
 

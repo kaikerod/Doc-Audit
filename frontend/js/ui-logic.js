@@ -253,6 +253,33 @@
     };
   }
 
+  function buildApiHealthMeta(payload) {
+    var safePayload = payload || {};
+    var features = safePayload.features || {};
+    var uploadsEnabled = features.uploads_enabled !== false;
+    var detail = typeof safePayload.detail === "string" && safePayload.detail.trim()
+      ? safePayload.detail.trim()
+      : "";
+
+    if (!uploadsEnabled) {
+      return {
+        label: "IA pendente",
+        className: "hero__status-pill hero__status-pill--pending",
+        description: detail || "Configure a integra\u00e7\u00e3o de IA para habilitar uploads.",
+        uploadsEnabled: false,
+        uploadMessage: detail || "Uploads indispon\u00edveis at\u00e9 a configura\u00e7\u00e3o da IA."
+      };
+    }
+
+    return {
+      label: "Dispon\u00edvel",
+      className: "hero__status-pill hero__status-pill--success",
+      description: "API e pipeline de an\u00e1lise prontos para receber arquivos.",
+      uploadsEnabled: true,
+      uploadMessage: ""
+    };
+  }
+
   function mapUploadItemsToDocuments(items) {
     return (items || []).map(function (item) {
       return {
@@ -300,6 +327,7 @@
   return {
     buildExportPath: buildExportPath,
     buildDashboardStats: buildDashboardStats,
+    buildApiHealthMeta: buildApiHealthMeta,
     escapeHtml: escapeHtml,
     filterDocuments: filterDocuments,
     formatCurrencyBRL: formatCurrencyBRL,
