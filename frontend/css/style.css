@@ -446,6 +446,27 @@ select:focus-visible,
   display: none;
 }
 
+.results-layout--detail-open .toolbar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.results-layout--detail-open .toolbar__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.results-layout--detail-open .toolbar__field--search {
+  grid-column: 1 / -1;
+}
+
+.results-layout--detail-open .table-shell__header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.results-layout--detail-open .table-shell__legend,
+.results-layout--detail-open .table-shell__header .clear-all-cluster {
+  justify-self: stretch;
+}
+
 .panel {
   position: relative;
   width: 100%;
@@ -1067,6 +1088,10 @@ select:focus-visible,
   gap: 14px;
 }
 
+.toolbar__grid > .toolbar__field {
+  min-width: 0;
+}
+
 .toolbar__actions {
   display: flex;
   flex-wrap: wrap;
@@ -1166,15 +1191,19 @@ select:focus-visible,
 }
 
 .table-shell__header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  gap: 16px 20px;
   padding: 18px 20px;
   border-bottom: 1px solid rgba(24, 32, 34, 0.08);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(250, 244, 231, 0.72)),
     rgba(255, 255, 255, 0.62);
+}
+
+.table-shell__summary {
+  min-width: 0;
 }
 
 .table-shell__header strong {
@@ -1193,6 +1222,14 @@ select:focus-visible,
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+  align-self: center;
+}
+
+.table-shell__header .clear-all-cluster {
+  justify-self: end;
+  align-self: center;
+  max-width: 100%;
+  padding: 14px 18px;
 }
 
 .results-table {
@@ -1505,6 +1542,7 @@ select:focus-visible,
 .clear-all-cluster {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   padding: 16px 20px;
   border: 1px solid rgba(161, 44, 36, 0.1);
@@ -1657,6 +1695,7 @@ select:focus-visible,
   }
 
   .table-shell__header {
+    grid-template-columns: 1fr;
     padding: 0 0 16px;
     border-bottom: none;
     background: transparent;
@@ -1664,6 +1703,10 @@ select:focus-visible,
 
   .table-shell__legend {
     justify-content: flex-start;
+  }
+
+  .table-shell__header .clear-all-cluster {
+    justify-self: stretch;
   }
 
   .results-table {
