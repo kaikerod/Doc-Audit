@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
+from zipfile import BadZipFile, ZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select
@@ -10,6 +12,7 @@ from ..config import settings
 from ..database import DbSession, get_db
 from ..models.upload import Upload
 from ..schemas.upload import UploadBatchResponse, UploadListResponse, UploadRead
+from ..services.audit_service import log_audit_event
 from ..services.document_processing_service import (
     TxtDecodingError,
     build_failed_upload_bundle,
@@ -19,9 +22,8 @@ from ..services.document_processing_service import (
     persist_failed_uploads,
     persist_pending_uploads,
 )
-from ..services.audit_service import log_audit_event
 from ..services.queue_service import enqueue_upload_processing
-from ..services.upload_service import UploadNotFoundError, delete_upload, delete_all_uploads
+from ..services.upload_service import UploadNotFoundError, delete_all_uploads, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
 
@@ -32,22 +34,15 @@ def get_upload_storage_dir() -> Path:
     return storage_dir
 
 
-def _validate_upload_count(files: list[UploadFile]) -> None:
-    if len(files) > settings.upload_max_files:
+def _validate_upload_count(file_count: int) -> None:
+    if file_count > settings.upload_max_files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Limite maximo de {settings.upload_max_files} arquivos por envio.",
         )
 
 
-def _validate_upload_file(filename: str, content: bytes) -> None:
-    suffix = Path(filename).suffix.lower()
-    if suffix != ".txt":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Apenas arquivos .txt sao permitidos.",
-        )
-
+def _validate_upload_content(content: bytes) -> None:
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -59,6 +54,74 @@ def _validate_upload_file(filename: str, content: bytes) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Arquivo excede o limite de {settings.upload_max_size_bytes} bytes.",
         )
+
+
+def _extract_txt_files_from_zip(content: bytes) -> list[tuple[str, bytes]]:
+    _validate_upload_content(content)
+
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            extracted_files: list[tuple[str, bytes]] = []
+
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+
+                member_name = Path(member.filename.replace("\\", "/")).as_posix()
+                if Path(member_name).suffix.lower() != ".txt":
+                    continue
+
+                if member.file_size <= 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Arquivos vazios nao sao permitidos.",
+                    )
+
+                if member.file_size > settings.upload_max_size_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Arquivo excede o limite de {settings.upload_max_size_bytes} bytes.",
+                    )
+
+                try:
+                    member_content = archive.read(member)
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Nao foi possivel ler os arquivos .txt do .zip enviado.",
+                    ) from exc
+
+                _validate_upload_content(member_content)
+                extracted_files.append((member_name, member_content))
+    except BadZipFile as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo .zip invalido ou corrompido.",
+        ) from exc
+
+    if not extracted_files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo .zip precisa conter ao menos um arquivo .txt.",
+        )
+
+    return extracted_files
+
+
+def _expand_upload_file(filename: str, content: bytes) -> list[tuple[str, bytes]]:
+    suffix = Path(filename).suffix.lower()
+
+    if suffix == ".txt":
+        _validate_upload_content(content)
+        return [(filename, content)]
+
+    if suffix == ".zip":
+        return _extract_txt_files_from_zip(content)
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Apenas arquivos .txt ou .zip sao permitidos.",
+    )
 
 
 def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
@@ -74,10 +137,11 @@ def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
 @router.post(
     "",
     response_model=UploadBatchResponse,
-    summary="Realiza o upload de múltiplos arquivos",
+    summary="Realiza o upload de multiplos arquivos",
     description=(
-        f"Recebe ate {settings.upload_max_files} arquivos .txt para processamento. "
-        "Cada arquivo e validado por extensao e tamanho antes de ser enfileirado."
+        f"Recebe ate {settings.upload_max_files} arquivos .txt por envio, incluindo "
+        "arquivos extraidos de pacotes .zip. Cada item e validado por extensao e "
+        "tamanho antes de ser enfileirado."
     ),
 )
 async def create_uploads(
@@ -86,7 +150,7 @@ async def create_uploads(
     db: DbSession = Depends(get_db),
     storage_dir: Path = Depends(get_upload_storage_dir),
 ) -> UploadBatchResponse:
-    _validate_upload_count(files)
+    _validate_upload_count(len(files))
 
     validated_files: list[tuple[str, bytes]] = []
     persisted_uploads: list[Upload] = []
@@ -96,8 +160,8 @@ async def create_uploads(
         original_name = Path(uploaded_file.filename or "").name
         content = await uploaded_file.read()
 
-        _validate_upload_file(original_name, content)
-        validated_files.append((original_name, content))
+        validated_files.extend(_expand_upload_file(original_name, content))
+        _validate_upload_count(len(validated_files))
 
     for original_name, content in validated_files:
         try:
@@ -194,7 +258,7 @@ def get_upload(
     "",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove todos os uploads",
-    description="Exclui todos os registros de upload e seus arquivos físicos. Esta ação é registrada no log de auditoria.",
+    description="Exclui todos os registros de upload e seus arquivos fisicos. Esta acao e registrada no log de auditoria.",
 )
 def remove_all_uploads(
     request: Request,
@@ -211,7 +275,7 @@ def remove_all_uploads(
     "/{upload_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove um upload",
-    description="Exclui o registro do upload e o arquivo físico associado. Esta ação é registrada no log de auditoria.",
+    description="Exclui o registro do upload e o arquivo fisico associado. Esta acao e registrada no log de auditoria.",
 )
 def remove_upload(
     upload_id: UUID,

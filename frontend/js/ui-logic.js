@@ -225,11 +225,12 @@
     var fileName = file && file.name ? file.name : "";
     var normalizedName = normalizeKeyword(fileName);
     var hasTxtExtension = normalizedName.endsWith(".txt");
+    var hasZipExtension = normalizedName.endsWith(".zip");
 
-    if (!hasTxtExtension) {
+    if (!hasTxtExtension && !hasZipExtension) {
       return {
         valid: false,
-        reason: "Apenas arquivos .txt s\u00e3o permitidos."
+        reason: "Apenas arquivos .txt ou .zip s\u00e3o permitidos."
       };
     }
 

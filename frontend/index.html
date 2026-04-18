@@ -48,8 +48,11 @@
           <div class="hero__mini-grid" aria-label="Fluxo operacional">
             <article class="hero__mini-card">
               <span>Entrada</span>
-              <strong>TXT em lote</strong>
-              <p>Receba at&eacute; 250 arquivos por envio com valida&ccedil;&atilde;o imediata.</p>
+              <strong>TXT ou ZIP</strong>
+              <p>
+                Receba at&eacute; 250 arquivos TXT por envio, inclusive quando vierem
+                compactados.
+              </p>
             </article>
             <article class="hero__mini-card">
               <span>Triagem</span>
@@ -69,13 +72,16 @@
             <div class="panel__header">
               <div>
                 <p class="panel__eyebrow">Entrada de documentos</p>
-                <h2>Upload de arquivos TXT</h2>
+                <h2>Upload de arquivos TXT ou ZIP</h2>
                 <p class="panel__lead">
-                  Envie lotes de documentos fiscais e acompanhe o processamento
-                  em um fluxo &uacute;nico, sem sair da mesa de auditoria.
+                  Envie documentos fiscais em `.txt` ou compacte os lotes em
+                  `.zip` contendo apenas `.txt` para acompanhar tudo em um fluxo
+                  &uacute;nico, sem sair da mesa de auditoria.
                 </p>
               </div>
-              <p class="panel__hint">M&aacute;ximo de 250 arquivos por envio, at&eacute; 5 MB cada.</p>
+              <p class="panel__hint">
+                M&aacute;ximo de 250 arquivos TXT por envio, at&eacute; 5 MB por item.
+              </p>
             </div>
 
             <div class="upload-panel__layout">
@@ -84,14 +90,14 @@
                 class="dropzone"
                 tabindex="0"
                 role="button"
-                aria-label="Selecionar arquivos TXT"
+                aria-label="Selecionar arquivos TXT ou ZIP"
               >
-                <div class="dropzone__icon">TXT</div>
+                <div class="dropzone__icon">TXT/ZIP</div>
                 <div class="dropzone__content">
-                  <strong>Arraste arquivos aqui</strong>
+                  <strong>Arraste arquivos TXT ou ZIP aqui</strong>
                   <p>
-                    ou use o bot&atilde;o para selecionar notas fiscais e documentos
-                    financeiros.
+                    ou use o bot&atilde;o para selecionar notas fiscais, documentos
+                    financeiros ou um pacote `.zip` com os `.txt`.
                   </p>
                 </div>
                 <button id="upload-browse-button" type="button" class="button button--primary">
@@ -100,7 +106,7 @@
                 <input
                   id="upload-file-input"
                   type="file"
-                  accept=".txt,text/plain"
+                  accept=".txt,.zip,text/plain,application/zip,application/x-zip-compressed"
                   multiple
                   hidden
                 />
@@ -113,7 +119,10 @@
                     <span>01</span>
                     <div>
                       <strong>Recebimento</strong>
-                      <p>Valida&ccedil;&atilde;o de extens&atilde;o e tamanho antes do envio ao backend.</p>
+                      <p>
+                        Valida&ccedil;&atilde;o de extens&atilde;o, tamanho e
+                        extra&ccedil;&atilde;o de `.zip` antes do envio ao backend.
+                      </p>
                     </div>
                   </article>
                   <article class="upload-panel__brief-item">
@@ -135,7 +144,8 @@
             </div>
 
             <div class="upload-panel__meta" aria-label="Regras de upload">
-              <span class="meta-pill">TXT apenas</span>
+              <span class="meta-pill">TXT ou ZIP</span>
+              <span class="meta-pill">ZIP com .txt</span>
               <span class="meta-pill">Batch com 250 arquivos</span>
               <span class="meta-pill">5 MB por item</span>
             </div>

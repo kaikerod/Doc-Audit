@@ -172,7 +172,7 @@
       );
 
       try {
-        var payload = await root.DocAuditApi.uploadTxtFiles(selection.addedFiles);
+        var payload = await root.DocAuditApi.uploadFiles(selection.addedFiles);
         acceptedFiles = selection.files;
         if (typeof onUploadSuccess === "function") {
           await onUploadSuccess(payload);

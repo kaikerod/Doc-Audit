@@ -100,7 +100,7 @@
     return response.json();
   }
 
-  async function uploadTxtFiles(files) {
+  async function uploadFiles(files) {
     const healthPayload = await fetchApiHealth();
     const uploadsEnabled = !healthPayload.features || healthPayload.features.uploads_enabled !== false;
 
@@ -192,6 +192,7 @@
     fetchDocuments: fetchDocuments,
     fetchApiHealth: fetchApiHealth,
     resolveApiBaseUrl: resolveApiBaseUrl,
-    uploadTxtFiles: uploadTxtFiles
+    uploadFiles: uploadFiles,
+    uploadTxtFiles: uploadFiles
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

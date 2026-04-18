@@ -113,6 +113,18 @@ describe("DocAudit UI logic", () => {
     expect(filtered[0].numeroNF).toBe("NF-1002");
   });
 
+  test("validateUploadFile aceita arquivos zip", () => {
+    const result = validateUploadFile(
+      { name: "lote-notas.zip", size: 1024 },
+      5 * 1024 * 1024
+    );
+
+    expect(result).toEqual({
+      valid: true,
+      reason: ""
+    });
+  });
+
   test("validateUploadFile rejeita extensao invalida", () => {
     const result = validateUploadFile(
       { name: "nota-fiscal.pdf", size: 1024 },
@@ -121,7 +133,7 @@ describe("DocAudit UI logic", () => {
 
     expect(result).toEqual({
       valid: false,
-      reason: "Apenas arquivos .txt s\u00e3o permitidos."
+      reason: "Apenas arquivos .txt ou .zip s\u00e3o permitidos."
     });
   });
 
@@ -202,8 +214,8 @@ describe("DocAudit UI logic", () => {
     expect(result.files.map((file) => file.name)).toEqual(["nota-1.txt"]);
     expect(result.addedFiles.map((file) => file.name)).toEqual(["nota-1.txt"]);
     expect(result.invalidFiles.map((entry) => entry.reason)).toEqual([
-      "Apenas arquivos .txt são permitidos.",
-      "Arquivos vazios não são permitidos."
+      "Apenas arquivos .txt ou .zip s\u00e3o permitidos.",
+      "Arquivos vazios n\u00e3o s\u00e3o permitidos."
     ]);
     expect(result.remainingSlots).toBe(4);
   });

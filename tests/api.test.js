@@ -34,7 +34,7 @@ describe("DocAudit API", () => {
     delete global.DocAuditApi;
   });
 
-  test("uploadTxtFiles nao dispara POST quando o health bloqueia uploads", async () => {
+  test("uploadFiles nao dispara POST quando o health bloqueia uploads", async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -46,14 +46,14 @@ describe("DocAudit API", () => {
     });
 
     await expect(
-      global.DocAuditApi.uploadTxtFiles([{ name: "nota-fiscal.txt", size: 10 }])
+      global.DocAuditApi.uploadFiles([{ name: "nota-fiscal.txt", size: 10 }])
     ).rejects.toThrow("Falha ao conectar ao OpenRouter.");
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith("http://127.0.0.1:8000/api/v1/health");
   });
 
-  test("uploadTxtFiles envia o FormData apos health bem-sucedido", async () => {
+  test("uploadFiles envia o FormData apos health bem-sucedido", async () => {
     global.fetch
       .mockResolvedValueOnce({
         ok: true,
@@ -71,7 +71,7 @@ describe("DocAudit API", () => {
       });
 
     await expect(
-      global.DocAuditApi.uploadTxtFiles([{ name: "nota-fiscal.txt", size: 10 }])
+      global.DocAuditApi.uploadFiles([{ name: "nota-fiscal.txt", size: 10 }])
     ).resolves.toEqual({
       items: []
     });

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +23,14 @@ from backend.app.routers.uploads import get_upload_storage_dir
 @pytest.fixture()
 def upload_storage_dir() -> Path:
     return Path.cwd() / "tests" / ".tmp" / "uploads"
+
+
+def build_zip_payload(files: dict[str, bytes]) -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        for filename, content in files.items():
+            archive.writestr(filename, content)
+    return buffer.getvalue()
 
 
 def test_upload_txt_valido_returns_200(
@@ -171,6 +181,108 @@ def test_upload_persists_successful_and_failed_files_in_same_batch(
     assert db_session.scalar(select(Documento)) is None
 
 
+def test_upload_zip_with_txts_expands_into_multiple_uploads(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+    monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
+
+    zip_payload = build_zip_payload(
+        {
+            "nota-1.txt": b"conteudo nota 1",
+            "lote/nota-2.txt": b"conteudo nota 2",
+            "ignorar.pdf": b"%PDF-1.4",
+        }
+    )
+
+    with patch(
+        "backend.app.routers.uploads.enqueue_upload_processing",
+        side_effect=["task-1", "task-2"],
+    ) as enqueue_mock:
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("lote.zip", zip_payload, "application/zip"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["nome_arquivo"] for item in payload["items"]] == ["nota-1.txt", "lote/nota-2.txt"]
+    assert [item["status"] for item in payload["items"]] == ["pendente", "pendente"]
+
+    uploads = db_session.scalars(select(Upload).order_by(Upload.nome_arquivo.asc())).all()
+    assert [upload.nome_arquivo for upload in uploads] == ["lote/nota-2.txt", "nota-1.txt"]
+    assert all(upload.caminho_arquivo.endswith(".txt") for upload in uploads)
+    assert db_session.scalar(select(Documento)) is None
+    assert enqueue_mock.call_count == 2
+
+
+def test_upload_zip_sem_txt_retorna_400(db_session, upload_storage_dir: Path) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    zip_payload = build_zip_payload({"nota-fiscal.pdf": b"%PDF-1.4"})
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/uploads",
+                files=[("files", ("lote.zip", zip_payload, "application/zip"))],
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Arquivo .zip precisa conter ao menos um arquivo .txt."}
+    assert db_session.scalar(select(Upload)) is None
+
+
+def test_upload_zip_invalido_retorna_400(db_session, upload_storage_dir: Path) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/uploads",
+                files=[("files", ("lote.zip", b"isto nao e um zip", "application/zip"))],
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Arquivo .zip invalido ou corrompido."}
+    assert db_session.scalar(select(Upload)) is None
+
+
+def test_upload_zip_acima_do_limite_expandido_retorna_400(db_session, upload_storage_dir: Path) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    zip_payload = build_zip_payload(
+        {f"nota-{index}.txt": b"conteudo" for index in range(settings.upload_max_files + 1)}
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/uploads",
+                files=[("files", ("lote.zip", zip_payload, "application/zip"))],
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": f"Limite maximo de {settings.upload_max_files} arquivos por envio."
+    }
+    assert db_session.scalar(select(Upload)) is None
+
+
 def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:
     app.dependency_overrides[get_db] = lambda: db_session
     app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
@@ -185,7 +297,7 @@ def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
-    assert response.json() == {"detail": "Apenas arquivos .txt sao permitidos."}
+    assert response.json() == {"detail": "Apenas arquivos .txt ou .zip sao permitidos."}
     assert db_session.scalar(select(Upload)) is None
 
 
