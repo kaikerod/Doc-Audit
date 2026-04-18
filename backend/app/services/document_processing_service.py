@@ -34,6 +34,12 @@ class ProcessedUploadBundle:
 
 
 @dataclass(slots=True)
+class PendingUploadBundle:
+    upload: Upload
+    file_path: Path
+
+
+@dataclass(slots=True)
 class FailedUploadBundle:
     upload: Upload
     file_path: Path
@@ -45,6 +51,39 @@ def decode_txt_content(content: bytes) -> str:
         return content.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise TxtDecodingError("Arquivo TXT precisa estar codificado em UTF-8.") from exc
+
+
+def _build_upload_file_record(
+    *,
+    original_name: str,
+    content: bytes,
+    storage_dir: Path,
+    status: str,
+) -> tuple[Upload, Path]:
+    upload_id = uuid4()
+    stored_name = f"{uuid4()}.txt"
+    file_path = storage_dir / stored_name
+
+    upload = Upload(
+        id=upload_id,
+        nome_arquivo=original_name,
+        caminho_arquivo=str(file_path.resolve()),
+        hash_sha256=hashlib.sha256(content).hexdigest(),
+        tamanho_bytes=len(content),
+        status=status,
+    )
+    return upload, file_path
+
+
+def _write_upload_file(file_path: Path, content: bytes) -> None:
+    try:
+        file_path.write_bytes(content)
+    except Exception:
+        try:
+            file_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def _load_anomaly_context(
@@ -135,21 +174,15 @@ def build_processed_upload_bundle(
         extra_existing_invoice_keys=extra_existing_invoice_keys,
     )
 
-    upload_id = uuid4()
     documento_id = uuid4()
-    stored_name = f"{uuid4()}.txt"
-    file_path = storage_dir / stored_name
-
-    upload = Upload(
-        id=upload_id,
-        nome_arquivo=original_name,
-        caminho_arquivo=str(file_path.resolve()),
-        hash_sha256=hashlib.sha256(content).hexdigest(),
-        tamanho_bytes=len(content),
+    upload, file_path = _build_upload_file_record(
+        original_name=original_name,
+        content=content,
+        storage_dir=storage_dir,
         status="concluido",
     )
     documento = populate_documento_from_extraction(
-        Documento(id=documento_id, upload_id=upload_id),
+        Documento(id=documento_id, upload_id=upload.id),
         conteudo_bruto=conteudo_bruto,
         extraction=extraction,
         extraction_payload=extraction_payload,
@@ -164,19 +197,35 @@ def build_processed_upload_bundle(
         for anomalia in detected_anomalies
     ]
 
-    try:
-        file_path.write_bytes(content)
-    except Exception:
-        try:
-            file_path.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+    _write_upload_file(file_path, content)
 
     return ProcessedUploadBundle(
         upload=upload,
         documento=documento,
         anomalias=anomalias,
+        file_path=file_path,
+    )
+
+
+def build_pending_upload_bundle(
+    *,
+    original_name: str,
+    content: bytes,
+    storage_dir: Path,
+) -> PendingUploadBundle:
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    decode_txt_content(content)
+
+    upload, file_path = _build_upload_file_record(
+        original_name=original_name,
+        content=content,
+        storage_dir=storage_dir,
+        status="pendente",
+    )
+    _write_upload_file(file_path, content)
+
+    return PendingUploadBundle(
+        upload=upload,
         file_path=file_path,
     )
 
@@ -190,27 +239,13 @@ def build_failed_upload_bundle(
 ) -> FailedUploadBundle:
     storage_dir.mkdir(parents=True, exist_ok=True)
 
-    upload_id = uuid4()
-    stored_name = f"{uuid4()}.txt"
-    file_path = storage_dir / stored_name
-
-    upload = Upload(
-        id=upload_id,
-        nome_arquivo=original_name,
-        caminho_arquivo=str(file_path.resolve()),
-        hash_sha256=hashlib.sha256(content).hexdigest(),
-        tamanho_bytes=len(content),
+    upload, file_path = _build_upload_file_record(
+        original_name=original_name,
+        content=content,
+        storage_dir=storage_dir,
         status="erro",
     )
-
-    try:
-        file_path.write_bytes(content)
-    except Exception:
-        try:
-            file_path.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+    _write_upload_file(file_path, content)
 
     return FailedUploadBundle(
         upload=upload,
@@ -290,6 +325,19 @@ def persist_processed_uploads(
         db.refresh(processed_upload.upload)
 
 
+def persist_pending_uploads(
+    db: DbSession,
+    pending_uploads: list[PendingUploadBundle],
+) -> None:
+    for pending_upload in pending_uploads:
+        db.add(pending_upload.upload)
+
+    db.commit()
+
+    for pending_upload in pending_uploads:
+        db.refresh(pending_upload.upload)
+
+
 def persist_failed_uploads(
     db: DbSession,
     failed_uploads: list[FailedUploadBundle],
@@ -326,6 +374,14 @@ def cleanup_processed_uploads(processed_uploads: list[ProcessedUploadBundle]) ->
     for processed_upload in processed_uploads:
         try:
             processed_upload.file_path.unlink()
+        except FileNotFoundError:
+            continue
+
+
+def cleanup_pending_uploads(pending_uploads: list[PendingUploadBundle]) -> None:
+    for pending_upload in pending_uploads:
+        try:
+            pending_upload.file_path.unlink()
         except FileNotFoundError:
             continue
 

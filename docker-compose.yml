@@ -12,8 +12,32 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}
+      UPLOAD_ENQUEUE_SPACING_SECONDS: ${UPLOAD_ENQUEUE_SPACING_SECONDS:-5}
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: docaudit-worker
+    command: celery -A backend.app.workers.tasks.celery_app worker --loglevel=info --concurrency=1 --pool=solo
+    environment:
+      APP_NAME: ${APP_NAME:-DocAudit}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-docaudit}:${POSTGRES_PASSWORD:-docaudit}@db:5432/${POSTGRES_DB:-docaudit}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemma-4-31b-it:free}
+      UPLOAD_ENQUEUE_SPACING_SECONDS: ${UPLOAD_ENQUEUE_SPACING_SECONDS:-5}
     volumes:
       - .:/app
     depends_on:

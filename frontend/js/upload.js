@@ -6,26 +6,45 @@
 
   function buildUploadCompletionFeedback(payload) {
     var items = payload && Array.isArray(payload.items) ? payload.items : [];
+    var queuedCount = items.filter(function (item) {
+      return ["pendente", "processando"].includes(
+        String(item && item.status ? item.status : "").trim().toLowerCase()
+      );
+    }).length;
     var failedCount = items.filter(function (item) {
       return String(item && item.status ? item.status : "").trim().toLowerCase() === "erro";
     }).length;
 
-    if (!items.length || failedCount === 0) {
+    if (!items.length) {
       return {
-        message: "Upload e an\u00e1lise conclu\u00eddos.",
+        message: "Upload recebido.",
         tone: "success"
       };
     }
 
-    if (failedCount === items.length) {
+    if (failedCount === 0 && queuedCount === items.length) {
       return {
-        message: "Upload recebido, mas a an\u00e1lise falhou. Verifique a mesa de auditoria.",
+        message: "Upload recebido. As notas foram enfileiradas para an\u00e1lise.",
+        tone: "success"
+      };
+    }
+
+    if (failedCount === 0) {
+      return {
+        message: "Upload recebido e processamento iniciado.",
+        tone: "success"
+      };
+    }
+
+    if (failedCount === items.length && queuedCount === 0) {
+      return {
+        message: "Upload recebido, mas n\u00e3o foi poss\u00edvel enfileirar a an\u00e1lise. Verifique a mesa de auditoria.",
         tone: "error"
       };
     }
 
     return {
-      message: "Upload finalizado com falhas parciais. Verifique a mesa de auditoria.",
+      message: "Upload recebido com falhas parciais de enfileiramento. Verifique a mesa de auditoria.",
       tone: "error"
     };
   }

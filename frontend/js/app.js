@@ -1,4 +1,7 @@
 (function (root) {
+  var DOCUMENT_POLL_INTERVAL_MS = 4000;
+  var documentPollTimerId = null;
+
   function applyOfflineApiHealth(indicator, copyNode) {
     indicator.textContent = "Offline";
     indicator.className = "hero__status-pill hero__status-pill--error";
@@ -27,7 +30,42 @@
 
   async function loadDocuments(tableController) {
     var payload = await root.DocAuditApi.fetchDocuments();
-    tableController.setDocuments(root.DocAuditUiLogic.mapApiDocumentsToViewModels(payload.items));
+    var documents = root.DocAuditUiLogic.mapApiDocumentsToViewModels(payload.items);
+    tableController.setDocuments(documents);
+    return documents;
+  }
+
+  function stopDocumentPolling() {
+    if (documentPollTimerId !== null) {
+      root.clearTimeout(documentPollTimerId);
+      documentPollTimerId = null;
+    }
+  }
+
+  function hasPendingDocuments(documents) {
+    return (documents || []).some(function (document) {
+      var normalizedStatus = root.DocAuditUiLogic.normalizeKeyword(document.status);
+      return normalizedStatus === "pendente" || normalizedStatus === "processando";
+    });
+  }
+
+  function syncDocumentPolling(tableController, documents) {
+    stopDocumentPolling();
+
+    if (!hasPendingDocuments(documents)) {
+      return;
+    }
+
+    documentPollTimerId = root.setTimeout(function () {
+      loadDocuments(tableController)
+        .then(function (nextDocuments) {
+          syncDocumentPolling(tableController, nextDocuments);
+        })
+        .catch(function (error) {
+          console.error(error);
+          syncDocumentPolling(tableController, documents);
+        });
+    }, DOCUMENT_POLL_INTERVAL_MS);
   }
 
   function init() {
@@ -79,7 +117,8 @@
       },
       maxSizeBytes: 5 * 1024 * 1024,
       onUploadSuccess: async function () {
-        await loadDocuments(tableController);
+        var documents = await loadDocuments(tableController);
+        syncDocumentPolling(tableController, documents);
       }
     });
 
@@ -95,9 +134,13 @@
     });
 
     updateApiHealth(apiHealthIndicator, apiHealthCopy, uploadController);
-    loadDocuments(tableController).catch(function (error) {
-      console.error(error);
-    });
+    loadDocuments(tableController)
+      .then(function (documents) {
+        syncDocumentPolling(tableController, documents);
+      })
+      .catch(function (error) {
+        console.error(error);
+      });
   }
 
   document.addEventListener("DOMContentLoaded", init);

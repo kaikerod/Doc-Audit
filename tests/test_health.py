@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
-
 from fastapi.testclient import TestClient
 
 from backend.app.config import settings
@@ -12,6 +10,7 @@ def test_health_reports_limited_mode_without_openrouter_key(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "")
+    monkeypatch.setattr("backend.app.main.build_queue_health_check", lambda: ("ok", True, None))
 
     with TestClient(app) as client:
         response = client.get("/api/v1/health")
@@ -24,6 +23,7 @@ def test_health_reports_limited_mode_without_openrouter_key(
             "api": "ok",
             "database": "ok",
             "ai": "not_configured",
+            "queue": "ok",
         },
         "features": {
             "uploads_enabled": False,
@@ -36,10 +36,8 @@ def test_health_reports_uploads_enabled_when_openrouter_key_exists(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(
-        "backend.app.services.ia_service.socket.create_connection",
-        lambda *args, **kwargs: nullcontext(),
-    )
+    monkeypatch.setattr("backend.app.main.build_ai_health_check", lambda: ("ok", True, None))
+    monkeypatch.setattr("backend.app.main.build_queue_health_check", lambda: ("ok", True, None))
 
     with TestClient(app) as client:
         response = client.get("/api/v1/health")
@@ -52,6 +50,7 @@ def test_health_reports_uploads_enabled_when_openrouter_key_exists(
             "api": "ok",
             "database": "ok",
             "ai": "ok",
+            "queue": "ok",
         },
         "features": {
             "uploads_enabled": True,
@@ -63,14 +62,15 @@ def test_health_reports_limited_mode_when_openrouter_is_unreachable(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-
-    def raise_connection_error(*args, **kwargs):
-        raise OSError("network down")
-
     monkeypatch.setattr(
-        "backend.app.services.ia_service.socket.create_connection",
-        raise_connection_error,
+        "backend.app.main.build_ai_health_check",
+        lambda: (
+            "unreachable",
+            False,
+            "Falha ao conectar ao OpenRouter. Verifique rede, DNS e firewall do backend.",
+        ),
     )
+    monkeypatch.setattr("backend.app.main.build_queue_health_check", lambda: ("ok", True, None))
 
     with TestClient(app) as client:
         response = client.get("/api/v1/health")
@@ -83,9 +83,44 @@ def test_health_reports_limited_mode_when_openrouter_is_unreachable(
             "api": "ok",
             "database": "ok",
             "ai": "unreachable",
+            "queue": "ok",
         },
         "features": {
             "uploads_enabled": False,
         },
         "detail": "Falha ao conectar ao OpenRouter. Verifique rede, DNS e firewall do backend.",
+    }
+
+
+def test_health_reports_limited_mode_when_queue_is_unreachable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr("backend.app.main.build_ai_health_check", lambda: ("ok", True, None))
+    monkeypatch.setattr(
+        "backend.app.main.build_queue_health_check",
+        lambda: (
+            "unreachable",
+            False,
+            "Falha ao conectar ao Redis. Verifique a fila de processamento e o worker.",
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "limited",
+        "app": settings.app_name,
+        "checks": {
+            "api": "ok",
+            "database": "ok",
+            "ai": "ok",
+            "queue": "unreachable",
+        },
+        "features": {
+            "uploads_enabled": False,
+        },
+        "detail": "Falha ao conectar ao Redis. Verifique a fila de processamento e o worker.",
     }

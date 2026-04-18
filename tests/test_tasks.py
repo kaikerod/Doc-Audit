@@ -88,3 +88,54 @@ def test_process_upload_document_task_fluxo_completo_eager(db_session) -> None:
         "anomalias_detectadas",
         "processamento_concluido",
     }
+
+
+def test_process_upload_document_marks_upload_as_error_on_processing_failure(db_session) -> None:
+    upload = Upload(
+        nome_arquivo="nf-falha.txt",
+        caminho_arquivo="C:/fake/nf-falha.txt",
+        hash_sha256=sha256(b"conteudo fiscal").hexdigest(),
+        tamanho_bytes=len(b"conteudo fiscal"),
+        status="pendente",
+    )
+    db_session.add(upload)
+    db_session.commit()
+    db_session.refresh(upload)
+
+    original_always_eager = celery_app.conf.task_always_eager
+    original_eager_propagates = celery_app.conf.task_eager_propagates
+    original_broker_url = celery_app.conf.broker_url
+    original_result_backend = celery_app.conf.result_backend
+    celery_app.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=False,
+        broker_url="memory://",
+        result_backend="cache+memory://",
+    )
+
+    with patch("backend.app.workers.tasks.SessionLocal", return_value=db_session), patch(
+        "backend.app.workers.tasks.Path.read_text", return_value="conteudo fiscal"
+    ), patch(
+        "backend.app.workers.tasks.extract_document_data",
+        side_effect=RuntimeError("OpenRouter indisponivel"),
+    ):
+        result = process_upload_document.delay(str(upload.id))
+
+    celery_app.conf.update(
+        task_always_eager=original_always_eager,
+        task_eager_propagates=original_eager_propagates,
+        broker_url=original_broker_url,
+        result_backend=original_result_backend,
+    )
+
+    upload = db_session.get(Upload, upload.id)
+    audit_logs = db_session.scalars(select(AuditLog)).all()
+
+    assert result.failed()
+    assert upload is not None
+    assert upload.status == "erro"
+    assert db_session.scalar(select(Documento)) is None
+    assert {log.evento for log in audit_logs} == {
+        "processamento_iniciado",
+        "processamento_erro",
+    }

@@ -12,19 +12,15 @@ from ..models.upload import Upload
 from ..schemas.upload import UploadBatchResponse, UploadListResponse, UploadRead
 from ..services.document_processing_service import (
     TxtDecodingError,
-    build_processed_upload_bundle,
     build_failed_upload_bundle,
+    build_pending_upload_bundle,
     cleanup_failed_uploads,
-    cleanup_processed_uploads,
+    cleanup_pending_uploads,
     persist_failed_uploads,
-    persist_processed_uploads,
+    persist_pending_uploads,
 )
-from ..services.ia_service import (
-    IAServiceError,
-    OpenRouterConfigurationError,
-    OpenRouterTimeoutError,
-    OpenRouterUpstreamError,
-)
+from ..services.audit_service import log_audit_event
+from ..services.queue_service import enqueue_upload_processing
 from ..services.upload_service import UploadNotFoundError, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
@@ -102,27 +98,39 @@ async def create_uploads(
 
     for original_name, content in validated_files:
         try:
-            prepared_upload = build_processed_upload_bundle(
-                db,
+            pending_upload = build_pending_upload_bundle(
                 original_name=original_name,
                 content=content,
                 storage_dir=storage_dir,
             )
             try:
-                persist_processed_uploads(db, [prepared_upload], ip=request_ip)
+                persist_pending_uploads(db, [pending_upload])
             except Exception:
                 db.rollback()
-                cleanup_processed_uploads([prepared_upload])
+                cleanup_pending_uploads([pending_upload])
                 raise
 
-            persisted_uploads.append(prepared_upload.upload)
-        except (
-            TxtDecodingError,
-            OpenRouterConfigurationError,
-            OpenRouterTimeoutError,
-            OpenRouterUpstreamError,
-            IAServiceError,
-        ) as exc:
+            try:
+                enqueue_upload_processing(pending_upload.upload.id, position=len(persisted_uploads))
+            except Exception as exc:
+                db.rollback()
+                pending_upload.upload.status = "erro"
+                log_audit_event(
+                    db,
+                    evento="processamento_erro",
+                    entidade_tipo="upload",
+                    entidade_id=str(pending_upload.upload.id),
+                    ip=request_ip,
+                    payload={
+                        "upload_id": str(pending_upload.upload.id),
+                        "arquivo": pending_upload.upload.nome_arquivo,
+                        "erro": f"Falha ao enfileirar processamento: {exc}",
+                    },
+                )
+                db.refresh(pending_upload.upload)
+
+            persisted_uploads.append(pending_upload.upload)
+        except TxtDecodingError as exc:
             db.rollback()
             failed_upload = build_failed_upload_bundle(
                 original_name=original_name,

@@ -274,7 +274,7 @@
     return {
       label: "Dispon\u00edvel",
       className: "hero__status-pill hero__status-pill--success",
-      description: "API e pipeline de an\u00e1lise prontos para receber arquivos.",
+      description: "API, fila e pipeline de an\u00e1lise prontos para receber arquivos.",
       uploadsEnabled: true,
       uploadMessage: ""
     };

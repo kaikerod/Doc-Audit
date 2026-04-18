@@ -130,28 +130,32 @@ def process_upload_document_pipeline(upload_id: str | UUID, db: DbSession) -> Do
             },
         )
         return documento
-    except Exception as exc:
+    except Exception:
         db.rollback()
-
-        upload = _load_upload_or_fail(db, resolved_upload_id)
-        upload.status = "erro"
-        if documento is not None:
-            documento = db.get(Documento, documento.id)
-            if documento is not None:
-                documento.status_extracao = "erro"
-        db.commit()
-
-        log_audit_event(
-            db,
-            evento="processamento_erro",
-            entidade_tipo="upload",
-            entidade_id=str(upload.id),
-            payload={
-                "upload_id": str(upload.id),
-                "erro": str(exc),
-            },
-        )
         raise
+
+
+def mark_upload_processing_error(upload_id: str | UUID, db: DbSession, *, error_message: str) -> None:
+    resolved_upload_id = UUID(str(upload_id))
+    upload = _load_upload_or_fail(db, resolved_upload_id)
+    upload.status = "erro"
+
+    documento = _load_existing_documento(db, upload.id)
+    if documento is not None:
+        documento.status_extracao = "erro"
+
+    db.commit()
+
+    log_audit_event(
+        db,
+        evento="processamento_erro",
+        entidade_tipo="upload",
+        entidade_id=str(upload.id),
+        payload={
+            "upload_id": str(upload.id),
+            "erro": error_message,
+        },
+    )
 
 
 @celery_app.task(name="backend.app.workers.tasks.process_upload_document")
@@ -160,5 +164,9 @@ def process_upload_document(upload_id: str) -> str:
     try:
         documento = process_upload_document_pipeline(upload_id, db)
         return str(documento.id)
+    except Exception as exc:
+        db.rollback()
+        mark_upload_processing_error(upload_id, db, error_message=str(exc))
+        raise
     finally:
         db.close()
