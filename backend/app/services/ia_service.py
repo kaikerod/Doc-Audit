@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -24,6 +26,10 @@ class OpenRouterResponseError(IAServiceError):
 
 class OpenRouterTimeoutError(IAServiceError):
     """Timeout esgotado apos as retentativas configuradas."""
+
+
+class OpenRouterUpstreamError(IAServiceError):
+    """Erro de comunicacao ou status invalido retornado pelo OpenRouter."""
 
 
 def _build_openrouter_headers() -> dict[str, str]:
@@ -100,7 +106,122 @@ def _extract_json_content(content: str) -> dict[str, Any]:
     try:
         return json.loads(normalized_content)
     except json.JSONDecodeError as exc:
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", normalized_content, flags=re.DOTALL)
+        if fenced_match:
+            try:
+                return json.loads(fenced_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", normalized_content):
+            try:
+                parsed_content, _end = decoder.raw_decode(normalized_content[match.start() :])
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(parsed_content, dict):
+                return parsed_content
+
         raise OpenRouterResponseError("OpenRouter retornou JSON invalido.") from exc
+
+
+def _normalize_confidence_value(raw_value: Any) -> float | None:
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, str):
+        normalized_value = raw_value.strip().replace("%", "").replace(",", ".")
+        if not normalized_value:
+            return None
+        try:
+            numeric_value = float(normalized_value)
+        except ValueError:
+            return None
+    elif isinstance(raw_value, (int, float)):
+        numeric_value = float(raw_value)
+    else:
+        return None
+
+    if 0 <= numeric_value <= 1:
+        return numeric_value
+    if 1 < numeric_value <= 100:
+        return numeric_value / 100
+    return None
+
+
+def _normalize_decimal_value(raw_value: Any) -> Any:
+    if raw_value is None or isinstance(raw_value, (int, float, Decimal)):
+        return raw_value
+    if not isinstance(raw_value, str):
+        return raw_value
+
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return None
+
+    normalized_value = re.sub(r"[^\d,.\-]", "", normalized_value)
+    if not normalized_value:
+        return None
+
+    if "," in normalized_value and "." in normalized_value:
+        if normalized_value.rfind(",") > normalized_value.rfind("."):
+            normalized_value = normalized_value.replace(".", "").replace(",", ".")
+        else:
+            normalized_value = normalized_value.replace(",", "")
+    elif "," in normalized_value:
+        normalized_value = normalized_value.replace(".", "").replace(",", ".")
+
+    try:
+        return str(Decimal(normalized_value))
+    except InvalidOperation:
+        return raw_value
+
+
+def _normalize_date_value(raw_value: Any) -> Any:
+    if raw_value is None or not isinstance(raw_value, str):
+        return raw_value
+
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return None
+
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(normalized_value, pattern).date().isoformat()
+        except ValueError:
+            continue
+
+    return raw_value
+
+
+def _normalize_failed_fields(raw_value: Any) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, list):
+        return [str(item).strip() for item in raw_value if str(item).strip()]
+    if isinstance(raw_value, str):
+        return [item.strip() for item in re.split(r"[,;]", raw_value) if item.strip()]
+    return []
+
+
+def _normalize_extraction_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized_payload = dict(payload)
+    normalized_payload["data_emissao"] = _normalize_date_value(payload.get("data_emissao"))
+    normalized_payload["data_pagamento"] = _normalize_date_value(payload.get("data_pagamento"))
+    normalized_payload["valor_total"] = _normalize_decimal_value(payload.get("valor_total"))
+    normalized_payload["extraction_failed_fields"] = _normalize_failed_fields(
+        payload.get("extraction_failed_fields")
+    )
+
+    raw_confidences = payload.get("confiancas")
+    if isinstance(raw_confidences, dict):
+        normalized_payload["confiancas"] = {
+            field_name: _normalize_confidence_value(raw_confidences.get(field_name))
+            for field_name in DOCUMENT_EXTRACTION_FIELDS
+        }
+
+    return normalized_payload
 
 
 def _extract_message_content(content: Any) -> dict[str, Any]:
@@ -152,7 +273,7 @@ def _parse_openrouter_response(response_json: dict[str, Any]) -> DocumentExtract
     except (KeyError, IndexError, TypeError) as exc:
         raise OpenRouterResponseError("Resposta do OpenRouter nao contem choices validos.") from exc
 
-    parsed_content = _extract_message_content(content)
+    parsed_content = _normalize_extraction_payload(_extract_message_content(content))
 
     try:
         return DocumentExtractionResult.model_validate(parsed_content)
@@ -183,5 +304,18 @@ def extract_document_data(document_text: str) -> DocumentExtractionResult:
                 raise OpenRouterTimeoutError(
                     f"Timeout ao chamar OpenRouter apos {attempts} tentativas."
                 ) from exc
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text.strip()
+            if detail:
+                detail = re.sub(r"\s+", " ", detail)
+                detail = detail[:300]
+                message = (
+                    f"OpenRouter retornou status {exc.response.status_code}: {detail}"
+                )
+            else:
+                message = f"OpenRouter retornou status {exc.response.status_code}."
+            raise OpenRouterUpstreamError(message) from exc
+        except httpx.RequestError as exc:
+            raise OpenRouterUpstreamError("Falha ao conectar ao OpenRouter.") from exc
 
     raise OpenRouterTimeoutError("Timeout ao chamar OpenRouter.")

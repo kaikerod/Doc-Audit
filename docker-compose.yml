@@ -8,7 +8,7 @@ services:
     environment:
       APP_NAME: ${APP_NAME:-DocAudit}
       APP_VERSION: ${APP_VERSION:-0.1.0}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://docaudit:docaudit@db:5432/docaudit}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-docaudit}:${POSTGRES_PASSWORD:-docaudit}@db:5432/${POSTGRES_DB:-docaudit}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
