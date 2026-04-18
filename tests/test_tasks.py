@@ -256,6 +256,49 @@ def test_process_upload_document_uses_rate_limit_retry_budget_for_429_errors(db_
     assert session_local_mock.call_count == 1
 
 
+def test_process_upload_document_marks_error_for_non_retryable_rate_limit_errors(db_session) -> None:
+    upload = Upload(
+        nome_arquivo="nf-rate-limit-quota.txt",
+        caminho_arquivo="C:/fake/nf-rate-limit-quota.txt",
+        hash_sha256=sha256(b"conteudo fiscal").hexdigest(),
+        tamanho_bytes=len(b"conteudo fiscal"),
+        status="pendente",
+    )
+    db_session.add(upload)
+    db_session.commit()
+    db_session.refresh(upload)
+    upload_id = upload.id
+
+    quota_error = OpenRouterUpstreamError(
+        "A cota do modelo configurado na OpenRouter foi esgotada. Altere OPENROUTER_MODEL para outro modelo ou adicione creditos na conta.",
+        status_code=429,
+        retryable=False,
+    )
+
+    with patch("backend.app.workers.tasks.SessionLocal", return_value=db_session) as session_local_mock, patch(
+        "backend.app.workers.tasks.Path.read_text", return_value="conteudo fiscal"
+    ), patch(
+        "backend.app.workers.tasks.extract_document_data",
+        side_effect=quota_error,
+    ), patch.object(process_upload_document, "retry") as retry_mock:
+        with pytest.raises(OpenRouterUpstreamError) as exc_info:
+            process_upload_document.run(str(upload_id))
+
+    upload = db_session.get(Upload, upload_id)
+    audit_logs = db_session.scalars(select(AuditLog)).all()
+
+    assert str(exc_info.value) == str(quota_error)
+    assert upload is not None
+    assert upload.status == "erro"
+    assert db_session.scalar(select(Documento)) is None
+    assert session_local_mock.call_count == 2
+    assert {log.evento for log in audit_logs} == {
+        "processamento_iniciado",
+        "processamento_erro",
+    }
+    retry_mock.assert_not_called()
+
+
 def test_process_upload_document_marks_error_after_retry_budget_is_exhausted(db_session) -> None:
     upload = Upload(
         nome_arquivo="nf-timeout-final.txt",

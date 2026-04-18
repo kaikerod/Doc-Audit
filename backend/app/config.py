@@ -8,6 +8,34 @@ from sqlalchemy.engine.url import make_url
 DEFAULT_DATABASE_URL = "sqlite+pysqlite:///./docaudit.db"
 DOCKER_DATABASE_HOST = "db"
 HOST_DATABASE_HOST = "127.0.0.1"
+DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+
+def _strip_env_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
+
+
+def _load_dotenv_file(dotenv_path: Path = DOTENV_PATH) -> None:
+    if not dotenv_path.exists():
+        return
+
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, raw_value = line.split("=", 1)
+        normalized_key = key.strip()
+        if not normalized_key or normalized_key in os.environ:
+            continue
+
+        os.environ[normalized_key] = _strip_env_value(raw_value)
+
+
+_load_dotenv_file()
 
 
 def _parse_csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:

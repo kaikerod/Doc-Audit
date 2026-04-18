@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from uuid import uuid4
+
 import pytest
 
 from backend.app import config
@@ -41,3 +44,46 @@ def test_normalize_database_url_uses_sqlite_default_when_empty(
     monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
 
     assert config._normalize_database_url("   ") == config.DEFAULT_DATABASE_URL
+
+
+def test_strip_env_value_removes_wrapping_quotes() -> None:
+    assert config._strip_env_value('"valor"') == "valor"
+    assert config._strip_env_value("'valor'") == "valor"
+    assert config._strip_env_value("valor") == "valor"
+
+
+def _write_test_dotenv(contents: str) -> Path:
+    dotenv_path = Path.cwd() / "tests" / ".tmp" / f"{uuid4()}.env"
+    dotenv_path.parent.mkdir(parents=True, exist_ok=True)
+    dotenv_path.write_text(contents, encoding="utf-8")
+    return dotenv_path
+
+
+def test_load_dotenv_file_populates_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    dotenv_path = _write_test_dotenv(
+        "OPENROUTER_API_KEY=test-key\nOPENROUTER_MODEL='model/test'\nIGNORED_LINE\n"
+    )
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+
+    try:
+        config._load_dotenv_file(dotenv_path)
+    finally:
+        dotenv_path.unlink(missing_ok=True)
+
+    assert config.os.environ["OPENROUTER_API_KEY"] == "test-key"
+    assert config.os.environ["OPENROUTER_MODEL"] == "model/test"
+
+
+def test_load_dotenv_file_does_not_override_existing_env_vars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dotenv_path = _write_test_dotenv("OPENROUTER_API_KEY=dotenv-key\n")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "existing-key")
+
+    try:
+        config._load_dotenv_file(dotenv_path)
+    finally:
+        dotenv_path.unlink(missing_ok=True)
+
+    assert config.os.environ["OPENROUTER_API_KEY"] == "existing-key"

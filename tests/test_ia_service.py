@@ -487,6 +487,42 @@ def test_extract_document_data_exposes_retry_after_for_rate_limit(
 
 
 @patch("backend.app.services.ia_service.httpx.post")
+def test_extract_document_data_marks_quota_exhaustion_429_as_non_retryable(
+    mock_post: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_rate_limit_cooldown_seconds", 2.0)
+
+    request = httpx.Request("POST", settings.openrouter_api_url)
+    quota_response = httpx.Response(
+        429,
+        request=request,
+        text='{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"}}',
+    )
+
+    mock_response = Mock()
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "quota exhausted",
+        request=request,
+        response=quota_response,
+    )
+    mock_post.return_value = mock_response
+
+    with pytest.raises(OpenRouterUpstreamError) as exc_info:
+        extract_document_data("Conteudo do documento fiscal")
+
+    assert (
+        str(exc_info.value)
+        == "A cota do modelo configurado na OpenRouter foi esgotada. Altere OPENROUTER_MODEL para outro modelo ou adicione creditos na conta."
+    )
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.retryable is False
+    assert exc_info.value.retry_after_seconds is None
+    assert exc_info.value.rate_limit_source is None
+    assert mock_post.call_count == 1
+
+
+@patch("backend.app.services.ia_service.httpx.post")
 def test_extract_document_data_short_circuits_while_local_rate_limit_cooldown_is_active(
     mock_post: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:

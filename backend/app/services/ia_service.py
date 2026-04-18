@@ -481,10 +481,39 @@ def _extract_retry_after_seconds(response: httpx.Response) -> float | None:
     return None
 
 
+def _is_non_retryable_rate_limit_message(message: str) -> bool:
+    normalized_message = re.sub(r"\s+", " ", (message or "")).strip().lower()
+    if not normalized_message:
+        return False
+
+    non_retryable_markers = (
+        "free-models-per-day",
+        "free models per day",
+        "insufficient credits",
+        "add 10 credits",
+        "add credits",
+        "quota exceeded",
+        "quota reached",
+        "quota exhausted",
+        "daily quota",
+        "daily limit",
+        "monthly quota",
+        "monthly limit",
+        "billing",
+        "payment required",
+    )
+    return any(marker in normalized_message for marker in non_retryable_markers)
+
+
 def _build_upstream_user_message(status_code: int, message: str) -> str:
     normalized_message = (message or "").strip()
 
     if status_code == 429:
+        if _is_non_retryable_rate_limit_message(normalized_message):
+            return (
+                "A cota do modelo configurado na OpenRouter foi esgotada. "
+                "Altere OPENROUTER_MODEL para outro modelo ou adicione creditos na conta."
+            )
         return (
             "O provedor de IA atingiu o limite de requisicoes no momento. "
             "Aguarde alguns segundos e tente novamente."
@@ -655,10 +684,12 @@ def extract_document_data(
         error_message = _extract_openrouter_error_message(exc.response)
         completed_at = utcnow_iso()
         retryable = status_code in {429, 502, 503, 504}
+        if status_code == 429 and _is_non_retryable_rate_limit_message(error_message):
+            retryable = False
         retry_after_seconds = _extract_retry_after_seconds(exc.response)
         rate_limit_source = None
         rate_limit_backend = None
-        if status_code == 429:
+        if status_code == 429 and retryable:
             cooldown = record_openrouter_rate_limit_cooldown(
                 rate_limit_scope,
                 retry_after_seconds=retry_after_seconds,
