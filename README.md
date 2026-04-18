@@ -240,6 +240,11 @@ A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode 
 | `GET/POST` | `/api/v1/fornecedores` | Gerencia fornecedores (CNPJ) |
 | `GET` | `/api/v1/health` | Status da aplicação e dependências |
 
+### Observabilidade
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/api/v1/observability/load-validation` | Snapshot de fila Redis, tasks ativas e resumo dos eventos recentes para validação de carga |
+
 ---
 
 ## 🔄 Fluxo de Processamento
@@ -281,6 +286,9 @@ pytest -v --tb=short
 
 # Rodar um arquivo específico
 pytest tests/test_anomalia_service.py
+
+# Disparar um lote reproduzível de validação de carga
+python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 --batches 2 --batch-size 10 --output load-validation-report.json
 ```
 
 Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
@@ -297,6 +305,10 @@ Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
 | `OPENROUTER_MODEL` | Modelo de IA a utilizar | `google/gemma-4-31b-it:free` |
 | `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
 | `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
+| `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |
+| `CELERY_OBSERVED_QUEUES` | Filas monitoradas no snapshot de carga | `celery` |
+| `CELERY_INSPECT_TIMEOUT_SECONDS` | Timeout do inspect dos workers Celery | `1.5` |
+| `OBSERVABILITY_EVENT_RETENTION` | Quantidade de eventos recentes mantidos para diagnóstico | `2000` |
 | `APP_NAME` | Nome da aplicação | `DocAudit` |
 | `APP_VERSION` | Versão da aplicação | `0.1.0` |
 | `POSTGRES_DB` | Nome do banco (Docker) | `docaudit` |
@@ -537,6 +549,11 @@ DocAudit's API is fully documented via **Swagger/OpenAPI**. You can access the i
 | `GET/POST` | `/api/v1/fornecedores` | Manage suppliers (CNPJ) |
 | `GET` | `/api/v1/health` | Application and dependency status |
 
+### Observability
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/v1/observability/load-validation` | Snapshot of Redis queue depth, active tasks, and recent observability events for load validation |
+
 ---
 
 ## 🔄 Processing Flow
@@ -578,6 +595,9 @@ pytest -v --tb=short
 
 # Run a specific test file
 pytest tests/test_anomalia_service.py
+
+# Trigger a reproducible load-validation batch
+python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 --batches 2 --batch-size 10 --output load-validation-report.json
 ```
 
 Tests live in `tests/` and follow the `test_<module>.py` convention.
@@ -594,6 +614,10 @@ Tests live in `tests/` and follow the `test_<module>.py` convention.
 | `OPENROUTER_MODEL` | AI model to use | `google/gemma-4-31b-it:free` |
 | `OPENROUTER_REFERER` | Referrer URL for OpenRouter | — |
 | `OPENROUTER_TITLE` | Application title in OpenRouter | `DocAudit` |
+| `CELERY_DEFAULT_QUEUE` | Primary queue name observed by diagnostics | `celery` |
+| `CELERY_OBSERVED_QUEUES` | Queues monitored by the load snapshot | `celery` |
+| `CELERY_INSPECT_TIMEOUT_SECONDS` | Timeout for Celery worker inspect calls | `1.5` |
+| `OBSERVABILITY_EVENT_RETENTION` | Number of recent events retained for diagnostics | `2000` |
 | `APP_NAME` | Application name | `DocAudit` |
 | `APP_VERSION` | Application version | `0.1.0` |
 | `POSTGRES_DB` | Database name (Docker) | `docaudit` |

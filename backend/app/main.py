@@ -15,6 +15,7 @@ from .config import settings
 from .database import Base, engine
 from .routers.documentos import router as documentos_router
 from .routers.exportar import router as exportar_router
+from .routers.observability import router as observability_router
 from .routers.uploads import router as uploads_router
 from .services.ia_service import build_ai_health_check
 from .services.queue_service import build_queue_health_check
@@ -38,6 +39,10 @@ tags_metadata = [
     {
         "name": "health",
         "description": "Endpoints de monitoramento de integridade da API e banco de dados.",
+    },
+    {
+        "name": "observability",
+        "description": "Diagnosticos operacionais para fila, worker e validacao de carga.",
     },
     {
         "name": "meta",
@@ -70,6 +75,7 @@ app.add_middleware(
 app.include_router(uploads_router)
 app.include_router(documentos_router)
 app.include_router(exportar_router)
+app.include_router(observability_router)
 
 if FRONTEND_DIR.exists():
     app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="frontend-css")

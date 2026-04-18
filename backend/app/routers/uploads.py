@@ -111,7 +111,7 @@ async def create_uploads(
                 raise
 
             try:
-                enqueue_upload_processing(pending_upload.upload.id, position=len(persisted_uploads))
+                enqueue_upload_processing(pending_upload.upload.id)
             except Exception as exc:
                 db.rollback()
                 pending_upload.upload.status = "erro"

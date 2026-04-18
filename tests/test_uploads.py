@@ -52,7 +52,7 @@ def test_upload_txt_valido_returns_200(
     assert saved_upload.tamanho_bytes == len(b"conteudo de teste")
     assert saved_upload.caminho_arquivo.endswith(".txt")
     assert db_session.scalar(select(Documento)) is None
-    enqueue_mock.assert_called_once_with(saved_upload.id, position=0)
+    enqueue_mock.assert_called_once_with(saved_upload.id)
 
 
 def test_upload_marks_error_when_enqueue_fails(

@@ -20,6 +20,42 @@ from backend.app.models import (  # noqa: F401
     Fornecedor,
     Upload,
 )
+from backend.app.observability import reset_observability_state
+from backend.app.services.openrouter_rate_limit_service import reset_openrouter_rate_limit_state
+
+
+@pytest.fixture(autouse=True)
+def reset_openrouter_rate_limit_state_fixture() -> Generator[None, None, None]:
+    reset_openrouter_rate_limit_state()
+    try:
+        yield
+    finally:
+        reset_openrouter_rate_limit_state()
+
+
+@pytest.fixture(autouse=True)
+def reset_observability_state_fixture() -> Generator[None, None, None]:
+    reset_observability_state()
+    try:
+        yield
+    finally:
+        reset_observability_state()
+
+
+@pytest.fixture(autouse=True)
+def disable_redis_rate_limit_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.openrouter_rate_limit_service._get_redis_client",
+        lambda: None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def disable_redis_observability_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.observability._get_redis_client",
+        lambda: None,
+    )
 
 
 @pytest.fixture()

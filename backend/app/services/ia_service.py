@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import socket
 import time
@@ -12,7 +13,23 @@ from urllib.parse import urlparse
 import httpx
 
 from ..config import settings
+from ..observability import elapsed_ms, log_observability_event, utcnow_iso
 from ..schemas.documento import DOCUMENT_EXTRACTION_FIELDS, DocumentExtractionResult
+from .openrouter_rate_limit_service import (
+    build_openrouter_rate_limit_scope,
+    get_openrouter_rate_limit_cooldown,
+    record_openrouter_rate_limit_cooldown,
+)
+
+logger = logging.getLogger(__name__)
+
+TIMEOUT_PHASE_DETAILS = {
+    "connect": "dns_tcp_tls_connect",
+    "write": "request_body_write",
+    "read": "response_headers_or_body_read",
+    "pool": "connection_pool_wait",
+    "request": "request_execution",
+}
 
 
 class IAServiceError(Exception):
@@ -28,15 +45,43 @@ class OpenRouterResponseError(IAServiceError):
 
 
 class OpenRouterTimeoutError(IAServiceError):
-    """Timeout esgotado apos as retentativas configuradas."""
+    """Timeout ocorrido durante uma unica tentativa ao OpenRouter."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_delay_seconds: float | None = None,
+        timeout_phase: str | None = None,
+        phase_timeout_seconds: float | None = None,
+        timeout_budget_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_delay_seconds = retry_delay_seconds
+        self.timeout_phase = timeout_phase
+        self.phase_timeout_seconds = phase_timeout_seconds
+        self.timeout_budget_seconds = timeout_budget_seconds
 
 
 class OpenRouterUpstreamError(IAServiceError):
     """Erro de comunicacao ou status invalido retornado pelo OpenRouter."""
 
-    def __init__(self, message: str, *, status_code: int = 502) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 502,
+        retryable: bool = False,
+        retry_after_seconds: float | None = None,
+        rate_limit_scope: str | None = None,
+        rate_limit_source: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
+        self.rate_limit_scope = rate_limit_scope
+        self.rate_limit_source = rate_limit_source
 
 
 def build_ai_health_check() -> tuple[str, bool, str | None]:
@@ -56,7 +101,7 @@ def build_ai_health_check() -> tuple[str, bool, str | None]:
         )
 
     port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
-    timeout_seconds = max(1.0, min(settings.openrouter_timeout_seconds, 3.0))
+    timeout_seconds = max(1.0, min(settings.openrouter_connect_timeout_seconds, 3.0))
 
     try:
         with socket.create_connection((parsed_url.hostname, port), timeout=timeout_seconds):
@@ -79,6 +124,54 @@ def _build_openrouter_headers() -> dict[str, str]:
     if settings.openrouter_title:
         headers["X-OpenRouter-Title"] = settings.openrouter_title
     return headers
+
+
+def _build_openrouter_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=settings.openrouter_connect_timeout_seconds,
+        write=settings.openrouter_write_timeout_seconds,
+        read=settings.openrouter_read_timeout_seconds,
+        pool=settings.openrouter_pool_timeout_seconds,
+    )
+
+
+def _build_openrouter_timeout_context() -> dict[str, float]:
+    connect_timeout = settings.openrouter_connect_timeout_seconds
+    write_timeout = settings.openrouter_write_timeout_seconds
+    read_timeout = settings.openrouter_read_timeout_seconds
+    pool_timeout = settings.openrouter_pool_timeout_seconds
+    return {
+        "connect_timeout_seconds": connect_timeout,
+        "write_timeout_seconds": write_timeout,
+        "read_timeout_seconds": read_timeout,
+        "pool_timeout_seconds": pool_timeout,
+        "request_timeout_budget_seconds": round(
+            connect_timeout + write_timeout + read_timeout + pool_timeout,
+            3,
+        ),
+    }
+
+
+def _resolve_timeout_phase(exc: httpx.TimeoutException) -> str:
+    if isinstance(exc, httpx.ConnectTimeout):
+        return "connect"
+    if isinstance(exc, httpx.WriteTimeout):
+        return "write"
+    if isinstance(exc, httpx.ReadTimeout):
+        return "read"
+    if isinstance(exc, httpx.PoolTimeout):
+        return "pool"
+    return "request"
+
+
+def _resolve_phase_timeout_seconds(timeout_phase: str) -> float | None:
+    phase_budgets = {
+        "connect": settings.openrouter_connect_timeout_seconds,
+        "write": settings.openrouter_write_timeout_seconds,
+        "read": settings.openrouter_read_timeout_seconds,
+        "pool": settings.openrouter_pool_timeout_seconds,
+    }
+    return phase_budgets.get(timeout_phase)
 
 
 def build_extraction_prompt(document_text: str) -> str:
@@ -377,7 +470,7 @@ def _extract_openrouter_error_message(response: httpx.Response) -> str:
     return f"OpenRouter retornou status {response.status_code}."
 
 
-def _resolve_retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
+def _extract_retry_after_seconds(response: httpx.Response) -> float | None:
     retry_after = response.headers.get("retry-after", "").strip()
     if retry_after:
         try:
@@ -385,7 +478,7 @@ def _resolve_retry_delay_seconds(response: httpx.Response, attempt: int) -> floa
         except ValueError:
             pass
 
-    return min(float(attempt), 3.0)
+    return None
 
 
 def _build_upstream_user_message(status_code: int, message: str) -> str:
@@ -403,44 +496,257 @@ def _build_upstream_user_message(status_code: int, message: str) -> str:
     return normalized_message or f"OpenRouter retornou status {status_code}."
 
 
-def extract_document_data(document_text: str) -> DocumentExtractionResult:
+def extract_document_data(
+    document_text: str,
+    *,
+    request_context: dict[str, Any] | None = None,
+) -> DocumentExtractionResult:
     if not settings.openrouter_api_key:
         raise OpenRouterConfigurationError("OPENROUTER_API_KEY nao configurada.")
 
     headers = _build_openrouter_headers()
     payload = _build_request_payload(document_text)
-    attempts = settings.openrouter_timeout_retries + 1
+    timeout = _build_openrouter_timeout()
+    timeout_context = _build_openrouter_timeout_context()
+    current_attempt = int((request_context or {}).get("task_attempt", 1))
+    max_attempts = settings.openrouter_timeout_retries + 1
+    rate_limit_scope = build_openrouter_rate_limit_scope()
+    request_started_at = utcnow_iso()
+    request_started = time.perf_counter()
+    log_context = {
+        **(request_context or {}),
+        "model": settings.openrouter_model,
+        "document_length": len(document_text),
+        "max_attempts": max_attempts,
+        "rate_limit_scope": rate_limit_scope,
+        **timeout_context,
+    }
 
-    for attempt in range(1, attempts + 1):
-        try:
-            response = httpx.post(
-                settings.openrouter_api_url,
-                headers=headers,
-                json=payload,
-                timeout=settings.openrouter_timeout_seconds,
+    log_observability_event(
+        logger,
+        "openrouter_request_started",
+        request_started_at=request_started_at,
+        **log_context,
+    )
+
+    attempt_started_at = utcnow_iso()
+    attempt_started = time.perf_counter()
+    log_observability_event(
+        logger,
+        "openrouter_request_attempt_started",
+        attempt=current_attempt,
+        attempt_started_at=attempt_started_at,
+        **log_context,
+    )
+    try:
+        local_cooldown = get_openrouter_rate_limit_cooldown(rate_limit_scope)
+        if local_cooldown is not None:
+            deferred_at = utcnow_iso()
+            user_message = _build_upstream_user_message(429, "rate limit")
+            log_observability_event(
+                logger,
+                "openrouter_request_deferred_by_rate_limit",
+                level=logging.WARNING,
+                attempt=current_attempt,
+                attempt_started_at=attempt_started_at,
+                attempt_completed_at=deferred_at,
+                latency_ms=elapsed_ms(attempt_started),
+                status_code=429,
+                retryable=True,
+                retry_after_seconds=local_cooldown.wait_seconds,
+                rate_limit_source="local_cooldown",
+                rate_limit_backend=local_cooldown.backend,
+                **log_context,
             )
-            response.raise_for_status()
-            return _parse_openrouter_response(response.json())
-        except httpx.TimeoutException as exc:
-            if attempt == attempts:
-                raise OpenRouterTimeoutError(
-                    f"Timeout ao chamar OpenRouter apos {attempts} tentativas."
-                ) from exc
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            if status_code in {429, 502, 503, 504} and attempt < attempts:
-                time.sleep(_resolve_retry_delay_seconds(exc.response, attempt))
-                continue
-
-            message = _extract_openrouter_error_message(exc.response)
+            log_observability_event(
+                logger,
+                "openrouter_request_failed",
+                level=logging.ERROR,
+                request_started_at=request_started_at,
+                request_completed_at=deferred_at,
+                total_latency_ms=elapsed_ms(request_started),
+                final_attempt=current_attempt,
+                status_code=429,
+                retry_after_seconds=local_cooldown.wait_seconds,
+                rate_limit_source="local_cooldown",
+                error_message=user_message,
+                **log_context,
+            )
             raise OpenRouterUpstreamError(
-                _build_upstream_user_message(status_code, message),
-                status_code=status_code,
-            ) from exc
-        except httpx.RequestError as exc:
-            if attempt == attempts:
-                raise OpenRouterUpstreamError(
-                    "Falha ao conectar ao OpenRouter.", status_code=503
-                ) from exc
+                user_message,
+                status_code=429,
+                retryable=True,
+                retry_after_seconds=local_cooldown.wait_seconds,
+                rate_limit_scope=rate_limit_scope,
+                rate_limit_source="local_cooldown",
+            )
 
-    raise OpenRouterTimeoutError("Timeout ao chamar OpenRouter.")
+        response = httpx.post(
+            settings.openrouter_api_url,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        completed_at = utcnow_iso()
+        log_observability_event(
+            logger,
+            "openrouter_request_attempt_succeeded",
+            attempt=current_attempt,
+            attempt_started_at=attempt_started_at,
+            attempt_completed_at=completed_at,
+            latency_ms=elapsed_ms(attempt_started),
+            status_code=getattr(response, "status_code", None),
+            **log_context,
+        )
+        log_observability_event(
+            logger,
+            "openrouter_request_completed",
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            total_latency_ms=elapsed_ms(request_started),
+            final_attempt=current_attempt,
+            status_code=getattr(response, "status_code", None),
+            **log_context,
+        )
+        return _parse_openrouter_response(response.json())
+    except httpx.TimeoutException as exc:
+        timed_out_at = utcnow_iso()
+        timeout_phase = _resolve_timeout_phase(exc)
+        phase_timeout_seconds = _resolve_phase_timeout_seconds(timeout_phase)
+        log_observability_event(
+            logger,
+            "openrouter_request_attempt_timed_out",
+            level=logging.WARNING,
+            attempt=current_attempt,
+            attempt_started_at=attempt_started_at,
+            attempt_completed_at=timed_out_at,
+            latency_ms=elapsed_ms(attempt_started),
+            timeout_phase=timeout_phase,
+            timeout_scope=TIMEOUT_PHASE_DETAILS[timeout_phase],
+            phase_timeout_seconds=phase_timeout_seconds,
+            exception_class=exc.__class__.__name__,
+            error_message=str(exc),
+            **log_context,
+        )
+        log_observability_event(
+            logger,
+            "openrouter_request_failed",
+            level=logging.ERROR,
+            request_started_at=request_started_at,
+            request_completed_at=timed_out_at,
+            total_latency_ms=elapsed_ms(request_started),
+            final_attempt=current_attempt,
+            timeout_phase=timeout_phase,
+            timeout_scope=TIMEOUT_PHASE_DETAILS[timeout_phase],
+            phase_timeout_seconds=phase_timeout_seconds,
+            exception_class=exc.__class__.__name__,
+            error_message=str(exc),
+            **log_context,
+        )
+        raise OpenRouterTimeoutError(
+            "Timeout ao chamar OpenRouter.",
+            timeout_phase=timeout_phase,
+            phase_timeout_seconds=phase_timeout_seconds,
+            timeout_budget_seconds=timeout_context["request_timeout_budget_seconds"],
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        error_message = _extract_openrouter_error_message(exc.response)
+        completed_at = utcnow_iso()
+        retryable = status_code in {429, 502, 503, 504}
+        retry_after_seconds = _extract_retry_after_seconds(exc.response)
+        rate_limit_source = None
+        rate_limit_backend = None
+        if status_code == 429:
+            cooldown = record_openrouter_rate_limit_cooldown(
+                rate_limit_scope,
+                retry_after_seconds=retry_after_seconds,
+            )
+            retry_after_seconds = cooldown.wait_seconds
+            rate_limit_source = "upstream_429"
+            rate_limit_backend = cooldown.backend
+            log_observability_event(
+                logger,
+                "openrouter_rate_limit_cooldown_recorded",
+                level=logging.WARNING,
+                attempt=current_attempt,
+                attempt_started_at=attempt_started_at,
+                attempt_completed_at=completed_at,
+                status_code=status_code,
+                retry_after_seconds=retry_after_seconds,
+                rate_limit_source=rate_limit_source,
+                rate_limit_backend=rate_limit_backend,
+                **log_context,
+            )
+        log_observability_event(
+            logger,
+            "openrouter_request_attempt_failed",
+            level=logging.WARNING if retryable else logging.ERROR,
+            attempt=current_attempt,
+            attempt_started_at=attempt_started_at,
+            attempt_completed_at=completed_at,
+            latency_ms=elapsed_ms(attempt_started),
+            status_code=status_code,
+            retryable=retryable,
+            retry_after_seconds=retry_after_seconds,
+            rate_limit_source=rate_limit_source,
+            rate_limit_backend=rate_limit_backend,
+            error_message=error_message,
+            **log_context,
+        )
+        message = error_message
+        log_observability_event(
+            logger,
+            "openrouter_request_failed",
+            level=logging.ERROR,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            total_latency_ms=elapsed_ms(request_started),
+            final_attempt=current_attempt,
+            status_code=status_code,
+            retry_after_seconds=retry_after_seconds,
+            rate_limit_source=rate_limit_source,
+            error_message=message,
+            **log_context,
+        )
+        raise OpenRouterUpstreamError(
+            _build_upstream_user_message(status_code, message),
+            status_code=status_code,
+            retryable=retryable,
+            retry_after_seconds=retry_after_seconds,
+            rate_limit_scope=rate_limit_scope if status_code == 429 else None,
+            rate_limit_source=rate_limit_source,
+        ) from exc
+    except httpx.RequestError as exc:
+        completed_at = utcnow_iso()
+        log_observability_event(
+            logger,
+            "openrouter_request_attempt_request_error",
+            level=logging.WARNING,
+            attempt=current_attempt,
+            attempt_started_at=attempt_started_at,
+            attempt_completed_at=completed_at,
+            latency_ms=elapsed_ms(attempt_started),
+            retryable=True,
+            exception_class=exc.__class__.__name__,
+            error_message=str(exc),
+            **log_context,
+        )
+        log_observability_event(
+            logger,
+            "openrouter_request_failed",
+            level=logging.ERROR,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            total_latency_ms=elapsed_ms(request_started),
+            final_attempt=current_attempt,
+            exception_class=exc.__class__.__name__,
+            error_message=str(exc),
+            **log_context,
+        )
+        raise OpenRouterUpstreamError(
+            "Falha ao conectar ao OpenRouter.",
+            status_code=503,
+            retryable=True,
+        ) from exc

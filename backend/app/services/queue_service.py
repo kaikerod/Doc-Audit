@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import socket
 from urllib.parse import urlparse
 from uuid import UUID
 
 from ..config import settings
+from ..observability import log_observability_event, utcnow_iso
 from ..workers.tasks import process_upload_document
+
+logger = logging.getLogger(__name__)
 
 
 def build_queue_health_check() -> tuple[str, bool, str | None]:
@@ -30,7 +34,23 @@ def build_queue_health_check() -> tuple[str, bool, str | None]:
         )
 
 
-def enqueue_upload_processing(upload_id: UUID, *, position: int = 0) -> str:
-    countdown = max(position, 0) * max(settings.upload_enqueue_spacing_seconds, 0)
-    async_result = process_upload_document.apply_async(args=[str(upload_id)], countdown=countdown)
+def enqueue_upload_processing(upload_id: UUID) -> str:
+    countdown = 0
+    queued_at = utcnow_iso()
+    async_result = process_upload_document.apply_async(
+        args=[str(upload_id)],
+        kwargs={
+            "queued_at": queued_at,
+            "countdown_seconds": countdown,
+        },
+        countdown=countdown,
+    )
+    log_observability_event(
+        logger,
+        "upload_processing_enqueued",
+        upload_id=str(upload_id),
+        task_id=str(async_result.id),
+        queued_at=queued_at,
+        countdown_seconds=countdown,
+    )
     return str(async_result.id)
