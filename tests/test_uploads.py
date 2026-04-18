@@ -16,7 +16,7 @@ from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
 from backend.app.routers.uploads import get_upload_storage_dir
 from backend.app.schemas.documento import DocumentExtractionResult
-from backend.app.services.ia_service import OpenRouterTimeoutError
+from backend.app.services.ia_service import OpenRouterTimeoutError, OpenRouterUpstreamError
 
 
 @pytest.fixture()
@@ -119,6 +119,36 @@ def test_upload_does_not_persist_records_when_openrouter_fails(
     assert db_session.scalar(select(Documento)) is None
     assert db_session.scalar(select(AuditLog)) is None
     assert write_attempts == []
+
+
+def test_upload_preserves_openrouter_http_status(
+    db_session, upload_storage_dir: Path
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+
+    with patch(
+        "backend.app.services.document_processing_service.extract_document_data",
+        side_effect=OpenRouterUpstreamError(
+            "O provedor de IA atingiu o limite de requisicoes no momento. Aguarde alguns segundos e tente novamente.",
+            status_code=429,
+        ),
+    ):
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 429
+    assert response.json() == {
+        "detail": "O provedor de IA atingiu o limite de requisicoes no momento. Aguarde alguns segundos e tente novamente."
+    }
+    assert db_session.scalar(select(Upload)) is None
+    assert db_session.scalar(select(Documento)) is None
 
 
 def test_upload_pdf_retorna_400(db_session, upload_storage_dir: Path) -> None:

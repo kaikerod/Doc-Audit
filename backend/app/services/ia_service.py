@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from typing import Any
@@ -30,6 +31,10 @@ class OpenRouterTimeoutError(IAServiceError):
 
 class OpenRouterUpstreamError(IAServiceError):
     """Erro de comunicacao ou status invalido retornado pelo OpenRouter."""
+
+    def __init__(self, message: str, *, status_code: int = 502) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _build_openrouter_headers() -> dict[str, str]:
@@ -224,25 +229,56 @@ def _normalize_extraction_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return normalized_payload
 
 
+def _looks_like_extraction_payload(value: dict[str, Any]) -> bool:
+    expected_keys = set(DOCUMENT_EXTRACTION_FIELDS) | {"confiancas", "extraction_failed_fields"}
+    return bool(expected_keys.intersection(value))
+
+
+def _collect_text_parts(value: Any) -> list[str]:
+    if isinstance(value, str):
+        stripped_value = value.strip()
+        return [stripped_value] if stripped_value else []
+
+    if isinstance(value, list):
+        text_parts: list[str] = []
+        for item in value:
+            text_parts.extend(_collect_text_parts(item))
+        return text_parts
+
+    if isinstance(value, dict):
+        priority_keys = (
+            "text",
+            "content",
+            "value",
+            "output_text",
+            "output",
+            "message",
+            "parts",
+            "items",
+        )
+        text_parts: list[str] = []
+        for key in priority_keys:
+            if key in value:
+                text_parts.extend(_collect_text_parts(value[key]))
+        return text_parts
+
+    return []
+
+
 def _extract_message_content(content: Any) -> dict[str, Any]:
     if isinstance(content, str):
         return _extract_json_content(content)
 
     if isinstance(content, dict):
-        return content
+        if _looks_like_extraction_payload(content):
+            return content
+
+        text_parts = _collect_text_parts(content)
+        if text_parts:
+            return _extract_json_content("\n".join(text_parts))
 
     if isinstance(content, list):
-        text_parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-                continue
-            if not isinstance(item, dict):
-                continue
-            text = item.get("text")
-            if isinstance(text, str):
-                text_parts.append(text)
-
+        text_parts = _collect_text_parts(content)
         if text_parts:
             return _extract_json_content("\n".join(text_parts))
 
@@ -254,6 +290,12 @@ def _build_request_payload(document_text: str) -> dict[str, Any]:
         "model": settings.openrouter_model,
         "temperature": 0,
         "response_format": {"type": "json_object"},
+        "provider": {
+            "require_parameters": True,
+        },
+        "plugins": [
+            {"id": "response-healing"},
+        ],
         "messages": [
             {
                 "role": "system",
@@ -281,6 +323,54 @@ def _parse_openrouter_response(response_json: dict[str, Any]) -> DocumentExtract
         raise OpenRouterResponseError("JSON retornado pelo OpenRouter falhou na validacao.") from exc
 
 
+def _extract_openrouter_error_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        error_payload = payload.get("error")
+        if isinstance(error_payload, dict):
+            message = error_payload.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+        if isinstance(error_payload, str) and error_payload.strip():
+            return error_payload.strip()
+
+    detail = response.text.strip()
+    if detail:
+        return re.sub(r"\s+", " ", detail)[:300]
+
+    return f"OpenRouter retornou status {response.status_code}."
+
+
+def _resolve_retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
+    retry_after = response.headers.get("retry-after", "").strip()
+    if retry_after:
+        try:
+            return max(0.0, min(float(retry_after), 5.0))
+        except ValueError:
+            pass
+
+    return min(float(attempt), 3.0)
+
+
+def _build_upstream_user_message(status_code: int, message: str) -> str:
+    normalized_message = (message or "").strip()
+
+    if status_code == 429:
+        return (
+            "O provedor de IA atingiu o limite de requisicoes no momento. "
+            "Aguarde alguns segundos e tente novamente."
+        )
+
+    if normalized_message.lower() == "provider returned error":
+        return "O provedor de IA retornou um erro temporario. Tente novamente em instantes."
+
+    return normalized_message or f"OpenRouter retornou status {status_code}."
+
+
 def extract_document_data(document_text: str) -> DocumentExtractionResult:
     if not settings.openrouter_api_key:
         raise OpenRouterConfigurationError("OPENROUTER_API_KEY nao configurada.")
@@ -305,17 +395,20 @@ def extract_document_data(document_text: str) -> DocumentExtractionResult:
                     f"Timeout ao chamar OpenRouter apos {attempts} tentativas."
                 ) from exc
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text.strip()
-            if detail:
-                detail = re.sub(r"\s+", " ", detail)
-                detail = detail[:300]
-                message = (
-                    f"OpenRouter retornou status {exc.response.status_code}: {detail}"
-                )
-            else:
-                message = f"OpenRouter retornou status {exc.response.status_code}."
-            raise OpenRouterUpstreamError(message) from exc
+            status_code = exc.response.status_code
+            if status_code in {429, 502, 503, 504} and attempt < attempts:
+                time.sleep(_resolve_retry_delay_seconds(exc.response, attempt))
+                continue
+
+            message = _extract_openrouter_error_message(exc.response)
+            raise OpenRouterUpstreamError(
+                _build_upstream_user_message(status_code, message),
+                status_code=status_code,
+            ) from exc
         except httpx.RequestError as exc:
-            raise OpenRouterUpstreamError("Falha ao conectar ao OpenRouter.") from exc
+            if attempt == attempts:
+                raise OpenRouterUpstreamError(
+                    "Falha ao conectar ao OpenRouter.", status_code=503
+                ) from exc
 
     raise OpenRouterTimeoutError("Timeout ao chamar OpenRouter.")

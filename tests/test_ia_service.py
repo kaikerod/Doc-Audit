@@ -78,7 +78,7 @@ def test_extract_document_data_success(mock_post: Mock, monkeypatch: pytest.Monk
 
 
 @patch("backend.app.services.ia_service.httpx.post")
-def test_extract_document_data_uses_minimax_defaults_and_openrouter_headers(
+def test_extract_document_data_uses_gemma_defaults_and_openrouter_headers(
     mock_post: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
@@ -132,6 +132,8 @@ def test_extract_document_data_uses_minimax_defaults_and_openrouter_headers(
     assert result.numero_nf == "NF-456"
     assert result.aprovador == "Joao Souza"
     assert mock_post.call_args.kwargs["json"]["model"] == "google/gemma-4-31b-it:free"
+    assert mock_post.call_args.kwargs["json"]["provider"] == {"require_parameters": True}
+    assert mock_post.call_args.kwargs["json"]["plugins"] == [{"id": "response-healing"}]
     assert mock_post.call_args.kwargs["headers"]["HTTP-Referer"] == "https://docaudit.local"
     assert mock_post.call_args.kwargs["headers"]["X-OpenRouter-Title"] == "DocAudit"
 
@@ -181,6 +183,67 @@ def test_extract_document_data_tolerates_text_around_json(
 
     assert result.numero_nf == "NF-789"
     assert result.valor_total == Decimal("199.90")
+
+
+@patch("backend.app.services.ia_service.httpx.post")
+def test_extract_document_data_accepts_output_text_blocks(
+    mock_post: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+
+    mock_response = Mock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": [
+                        {
+                            "type": "reasoning",
+                            "text": "Analisando o documento...",
+                        },
+                        {
+                            "type": "output_text",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": json.dumps(
+                                        {
+                                            "numero_nf": "NF-850",
+                                            "cnpj_emitente": "12.345.678/0001-99",
+                                            "cnpj_destinatario": "98.765.432/0001-11",
+                                            "data_emissao": "2026-04-15",
+                                            "data_pagamento": "2026-04-16",
+                                            "valor_total": "250.00",
+                                            "aprovador": "Maria Silva",
+                                            "descricao": "Servico recorrente",
+                                            "confiancas": {
+                                                "numero_nf": 0.99,
+                                                "cnpj_emitente": 0.98,
+                                                "cnpj_destinatario": 0.97,
+                                                "data_emissao": 0.96,
+                                                "data_pagamento": 0.95,
+                                                "valor_total": 0.94,
+                                                "aprovador": 0.93,
+                                                "descricao": 0.92,
+                                            },
+                                            "extraction_failed_fields": [],
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    ]
+                }
+            }
+        ]
+    }
+    mock_post.return_value = mock_response
+
+    result = extract_document_data("Conteudo fiscal em blocos output_text")
+
+    assert result.numero_nf == "NF-850"
+    assert result.valor_total == Decimal("250.00")
 
 
 @patch("backend.app.services.ia_service.httpx.post")
@@ -252,4 +315,133 @@ def test_extract_document_data_wraps_openrouter_http_errors(
     with pytest.raises(OpenRouterUpstreamError) as exc_info:
         extract_document_data("Conteudo do documento fiscal")
 
-    assert "status 429" in str(exc_info.value)
+    assert (
+        str(exc_info.value)
+        == "O provedor de IA atingiu o limite de requisicoes no momento. Aguarde alguns segundos e tente novamente."
+    )
+    assert exc_info.value.status_code == 429
+
+
+@patch("backend.app.services.ia_service.httpx.post")
+def test_extract_document_data_retries_transient_openrouter_http_errors(
+    mock_post: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_timeout_retries", 2)
+
+    request = httpx.Request("POST", settings.openrouter_api_url)
+    retry_response = httpx.Response(502, request=request, text='{"error":{"message":"bad gateway"}}')
+
+    first_response = Mock()
+    first_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "bad gateway",
+        request=request,
+        response=retry_response,
+    )
+
+    second_response = Mock()
+    second_response.raise_for_status.return_value = None
+    second_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "numero_nf": "NF-901",
+                            "cnpj_emitente": "12.345.678/0001-99",
+                            "cnpj_destinatario": "98.765.432/0001-11",
+                            "data_emissao": "2026-04-15",
+                            "data_pagamento": "2026-04-16",
+                            "valor_total": 200,
+                            "aprovador": "Maria Silva",
+                            "descricao": "Servico",
+                            "confiancas": {
+                                "numero_nf": 0.99,
+                                "cnpj_emitente": 0.98,
+                                "cnpj_destinatario": 0.97,
+                                "data_emissao": 0.96,
+                                "data_pagamento": 0.95,
+                                "valor_total": 0.94,
+                                "aprovador": 0.93,
+                                "descricao": 0.92,
+                            },
+                            "extraction_failed_fields": [],
+                        }
+                    )
+                }
+            }
+        ]
+    }
+
+    mock_post.side_effect = [first_response, second_response]
+
+    result = extract_document_data("Conteudo do documento fiscal")
+
+    assert result.numero_nf == "NF-901"
+    assert mock_post.call_count == 2
+
+
+@patch("backend.app.services.ia_service.time.sleep")
+@patch("backend.app.services.ia_service.httpx.post")
+def test_extract_document_data_retries_rate_limit_with_backoff(
+    mock_post: Mock, mock_sleep: Mock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_timeout_retries", 2)
+
+    request = httpx.Request("POST", settings.openrouter_api_url)
+    retry_response = httpx.Response(
+        429,
+        request=request,
+        headers={"Retry-After": "1"},
+        text='{"error":"Provider returned error"}',
+    )
+
+    first_response = Mock()
+    first_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "rate limit",
+        request=request,
+        response=retry_response,
+    )
+
+    second_response = Mock()
+    second_response.raise_for_status.return_value = None
+    second_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "numero_nf": "NF-902",
+                            "cnpj_emitente": "12.345.678/0001-99",
+                            "cnpj_destinatario": "98.765.432/0001-11",
+                            "data_emissao": "2026-04-15",
+                            "data_pagamento": "2026-04-16",
+                            "valor_total": 200,
+                            "aprovador": "Maria Silva",
+                            "descricao": "Servico",
+                            "confiancas": {
+                                "numero_nf": 0.99,
+                                "cnpj_emitente": 0.98,
+                                "cnpj_destinatario": 0.97,
+                                "data_emissao": 0.96,
+                                "data_pagamento": 0.95,
+                                "valor_total": 0.94,
+                                "aprovador": 0.93,
+                                "descricao": 0.92,
+                            },
+                            "extraction_failed_fields": [],
+                        }
+                    )
+                }
+            }
+        ]
+    }
+
+    mock_post.side_effect = [first_response, second_response]
+
+    result = extract_document_data("Conteudo do documento fiscal")
+
+    assert result.numero_nf == "NF-902"
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once_with(1.0)

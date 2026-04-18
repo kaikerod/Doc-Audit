@@ -21,6 +21,7 @@ from ..services.ia_service import (
     IAServiceError,
     OpenRouterConfigurationError,
     OpenRouterTimeoutError,
+    OpenRouterUpstreamError,
 )
 from ..services.upload_service import UploadNotFoundError, delete_upload
 
@@ -133,6 +134,10 @@ async def create_uploads(
         db.rollback()
         cleanup_processed_uploads(prepared_uploads)
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc)) from exc
+    except OpenRouterUpstreamError as exc:
+        db.rollback()
+        cleanup_processed_uploads(prepared_uploads)
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except IAServiceError as exc:
         db.rollback()
         cleanup_processed_uploads(prepared_uploads)

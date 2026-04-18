@@ -74,6 +74,23 @@
     return resolveApiBaseUrl() + path;
   }
 
+  function buildApiErrorMessage(response, payload, fallbackMessage) {
+    var detail = payload && typeof payload.detail === "string" ? payload.detail.trim() : "";
+
+    if (response.status === 429) {
+      if (detail && !/provider returned error/i.test(detail)) {
+        return detail;
+      }
+      return "O provedor de IA atingiu o limite de requisi\u00e7\u00f5es no momento. Aguarde alguns segundos e tente novamente.";
+    }
+
+    if (detail) {
+      return detail;
+    }
+
+    return fallbackMessage;
+  }
+
   async function fetchApiHealth() {
     const response = await fetch(buildApiUrl(API_PREFIX + "/health"));
     if (!response.ok) {
@@ -96,7 +113,7 @@
 
     if (!response.ok) {
       const payload = await parseJsonSafely(response);
-      throw new Error(payload && payload.detail ? payload.detail : "Falha ao enviar os arquivos.");
+      throw new Error(buildApiErrorMessage(response, payload, "Falha ao enviar os arquivos."));
     }
 
     return response.json();
@@ -118,7 +135,7 @@
 
     if (!response.ok) {
       const payload = await parseJsonSafely(response);
-      throw new Error(payload && payload.detail ? payload.detail : "N\u00e3o foi poss\u00edvel excluir a nota.");
+      throw new Error(buildApiErrorMessage(response, payload, "N\u00e3o foi poss\u00edvel excluir a nota."));
     }
   }
 
@@ -134,7 +151,7 @@
 
     if (!response.ok) {
       const payload = await parseJsonSafely(response);
-      throw new Error(payload && payload.detail ? payload.detail : "N\u00e3o foi poss\u00edvel exportar os documentos.");
+      throw new Error(buildApiErrorMessage(response, payload, "N\u00e3o foi poss\u00edvel exportar os documentos."));
     }
 
     return {
