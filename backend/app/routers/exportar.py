@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from ..config import settings
 from ..database import DbSession, get_db
-from ..services.audit_service import log_audit_event
+from ..services.audit_service import clear_audit_logs, log_audit_event
 from ..services.export_service import (
     export_audit_log_csv,
     export_audit_log_excel,
@@ -56,6 +56,7 @@ def exportar_csv(
     db: DbSession = Depends(get_db),
 ) -> Response:
     export_file = export_documentos_csv(db, somente_com_anomalias=somente_com_anomalias)
+    clear_audit_logs(db, commit=False)
     _log_export_event(
         db,
         request,
@@ -80,7 +81,12 @@ def exportar_excel(
     somente_com_anomalias: bool = Query(default=False),
     db: DbSession = Depends(get_db),
 ) -> Response:
-    export_file = export_documentos_excel(db, somente_com_anomalias=somente_com_anomalias)
+    export_file = export_documentos_excel(
+        db,
+        somente_com_anomalias=somente_com_anomalias,
+        audit_log_rows=[],
+    )
+    clear_audit_logs(db, commit=False)
     _log_export_event(
         db,
         request,

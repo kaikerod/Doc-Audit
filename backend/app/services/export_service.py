@@ -535,10 +535,14 @@ def export_documentos_csv(
 
 
 def export_documentos_excel(
-    db: DbSession, *, somente_com_anomalias: bool = False
+    db: DbSession,
+    *,
+    somente_com_anomalias: bool = False,
+    audit_log_rows: list[dict[str, Any]] | None = None,
 ) -> GeneratedExport:
     document_rows = _build_document_export_rows(db, somente_com_anomalias=somente_com_anomalias)
-    audit_log_rows = _build_audit_log_export_rows(db)
+    if audit_log_rows is None:
+        audit_log_rows = _build_audit_log_export_rows(db)
     return GeneratedExport(
         content=generate_excel_bytes(
             (

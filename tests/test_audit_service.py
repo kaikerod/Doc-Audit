@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from backend.app.models.audit_log import AuditLog
-from backend.app.services.audit_service import log_audit_event
+from backend.app.services.audit_service import clear_audit_logs, log_audit_event
 
 
 def test_log_audit_event_persists_record(db_session) -> None:
@@ -36,3 +36,24 @@ def test_log_audit_event_persists_record(db_session) -> None:
     assert persisted_log.ip == "127.0.0.1"
     assert persisted_log.payload == payload
     assert persisted_log.timestamp is not None
+
+
+def test_clear_audit_logs_removes_existing_history(db_session) -> None:
+    log_audit_event(
+        db_session,
+        evento="upload_realizado",
+        entidade_tipo="upload",
+        entidade_id="upload-1",
+    )
+    log_audit_event(
+        db_session,
+        evento="processamento_concluido",
+        entidade_tipo="documento",
+        entidade_id="documento-1",
+    )
+
+    deleted_count = clear_audit_logs(db_session)
+    remaining_logs = db_session.scalars(select(AuditLog)).all()
+
+    assert deleted_count == 2
+    assert remaining_logs == []

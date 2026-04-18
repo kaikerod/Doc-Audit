@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from backend.app.database import get_db
 from backend.app.main import app
@@ -65,6 +68,15 @@ def _seed_export_data(db_session) -> None:
     db_session.commit()
 
 
+def _read_xlsx_xml_files(content: bytes) -> str:
+    with ZipFile(BytesIO(content)) as archive:
+        return "\n".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".xml")
+        )
+
+
 @pytest.mark.parametrize(
     ("path", "expected_extension", "expected_prefix"),
     [
@@ -91,3 +103,51 @@ def test_rotas_exportacao_retorna_attachment_com_extensao_correta(
     assert content_disposition.startswith("attachment;")
     assert expected_extension in content_disposition
     assert response.content.startswith(expected_prefix)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_format"),
+    [
+        ("/api/v1/exportar/csv", "csv"),
+        ("/api/v1/exportar/excel", "excel"),
+    ],
+)
+def test_exportacao_documentos_limpa_logs_anteriores_e_registra_apenas_exportacao_atual(
+    db_session, path: str, expected_format: str
+) -> None:
+    _seed_export_data(db_session)
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(path)
+    finally:
+        app.dependency_overrides.clear()
+
+    remaining_logs = db_session.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc())).all()
+
+    assert response.status_code == 200
+    assert len(remaining_logs) == 1
+    assert remaining_logs[0].evento == "exportacao_realizada"
+    assert remaining_logs[0].entidade_tipo == "documentos"
+    assert remaining_logs[0].payload == {
+        "formato": expected_format,
+        "quantidade_registros": 1,
+    }
+
+
+def test_exportacao_excel_nao_carrega_historico_anterior_no_arquivo(db_session) -> None:
+    _seed_export_data(db_session)
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/exportar/excel")
+    finally:
+        app.dependency_overrides.clear()
+
+    workbook_xml = _read_xlsx_xml_files(response.content)
+
+    assert response.status_code == 200
+    assert "upload_realizado" not in workbook_xml
+    assert "qa@test.local" not in workbook_xml
