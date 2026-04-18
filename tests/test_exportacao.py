@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
@@ -52,6 +52,7 @@ def _seed_export_data(db_session) -> None:
             codigo="APROVADOR_NOK",
             descricao="Aprovador nao consta na lista autorizada.",
             severidade="ALTA",
+            criado_em=datetime(2026, 4, 15, 9, 30, tzinfo=timezone.utc),
         )
     )
     db_session.add(
@@ -151,3 +152,31 @@ def test_exportacao_excel_nao_carrega_historico_anterior_no_arquivo(db_session) 
     assert response.status_code == 200
     assert "upload_realizado" not in workbook_xml
     assert "qa@test.local" not in workbook_xml
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_timestamp"),
+    [
+        ("/api/v1/exportar/csv", "2026-04-15 12:30:00+03:00"),
+        ("/api/v1/exportar/excel", "2026-04-15 12:30:00+03:00"),
+    ],
+)
+def test_exportacao_documentos_formata_flag_detectada_em_em_gmt_mais_tres(
+    db_session, path: str, expected_timestamp: str
+) -> None:
+    _seed_export_data(db_session)
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(path)
+    finally:
+        app.dependency_overrides.clear()
+
+    if path.endswith("/csv"):
+        exported_content = response.content.decode("utf-8-sig")
+    else:
+        exported_content = _read_xlsx_xml_files(response.content)
+
+    assert response.status_code == 200
+    assert expected_timestamp in exported_content

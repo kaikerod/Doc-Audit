@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO, StringIO
 import json
@@ -80,6 +80,7 @@ AUDIT_LOG_EXPORT_COLUMNS = (
 )
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F2937") if PatternFill else None
+GMT_PLUS_THREE = timezone(timedelta(hours=3))
 SEVERITY_FILLS = (
     {
         "CRITICA": PatternFill(fill_type="solid", fgColor="FECACA"),
@@ -106,6 +107,14 @@ def _select_latest_document(upload: Upload) -> Documento | None:
     if not upload.documentos:
         return None
     return max(upload.documentos, key=lambda documento: documento.criado_em or datetime.min)
+
+
+def _format_flag_detected_at(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+
+    resolved_value = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return resolved_value.astimezone(GMT_PLUS_THREE).isoformat(sep=" ", timespec="seconds")
 
 
 def _serialize_value(value: Any) -> str:
@@ -201,7 +210,7 @@ def _build_document_export_rows(
                     "flag_codigo": anomalia.codigo,
                     "flag_descricao": anomalia.descricao,
                     "flag_severidade": anomalia.severidade,
-                    "flag_detectada_em": anomalia.criado_em,
+                    "flag_detectada_em": _format_flag_detected_at(anomalia.criado_em),
                 }
             )
 
