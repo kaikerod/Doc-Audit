@@ -29,6 +29,11 @@ def test_build_extraction_prompt_contains_expected_fields() -> None:
     assert "cnpj_emitente" in prompt
     assert "confiancas" in prompt
     assert "extraction_failed_fields" in prompt
+    assert "CHAVE: VALOR" in prompt
+    assert "NUMERO_DOCUMENTO" in prompt
+    assert "DATA_EMISSAO_NF" in prompt
+    assert "VALOR_BRUTO" in prompt
+    assert "Nao escreva resumo, analise" in prompt
 
 
 @patch("backend.app.services.ia_service.httpx.post")
@@ -87,7 +92,7 @@ def test_extract_document_data_uses_gemma_defaults_and_openrouter_headers(
     mock_post: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
-    monkeypatch.setattr(settings, "openrouter_model", "google/gemma-4-31b-it:free")
+    monkeypatch.setattr(settings, "openrouter_model", "mistralai/ministral-3b-2512")
     monkeypatch.setattr(settings, "openrouter_referer", "https://docaudit.local")
     monkeypatch.setattr(settings, "openrouter_title", "DocAudit")
     monkeypatch.setattr(settings, "openrouter_connect_timeout_seconds", 2.5)
@@ -140,7 +145,7 @@ def test_extract_document_data_uses_gemma_defaults_and_openrouter_headers(
     assert isinstance(result, DocumentExtractionResult)
     assert result.numero_nf == "NF-456"
     assert result.aprovador == "Joao Souza"
-    assert mock_post.call_args.kwargs["json"]["model"] == "google/gemma-4-31b-it:free"
+    assert mock_post.call_args.kwargs["json"]["model"] == "mistralai/ministral-3b-2512"
     assert mock_post.call_args.kwargs["json"]["provider"] == {"require_parameters": True}
     assert mock_post.call_args.kwargs["json"]["plugins"] == [{"id": "response-healing"}]
     assert mock_post.call_args.kwargs["headers"]["HTTP-Referer"] == "https://docaudit.local"

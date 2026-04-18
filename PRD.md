@@ -92,7 +92,7 @@ Equipes financeiras, de compliance e auditoria interna de pequenas e médias emp
 - Registrar o resultado bruto da IA no banco para auditoria
 - Processar de forma assíncrona via Celery (não bloquear o usuário)
 
-**Modelo sugerido:** `google/gemma-4-31b-it:free` (via OpenRouter, configurável)
+**Modelo sugerido:** `mistralai/ministral-3b-2512` (via OpenRouter, configurável)
 
 **Tratamento de erros:**
 - Se a IA não conseguir extrair um campo, marcar como `null` com flag `extraction_failed`

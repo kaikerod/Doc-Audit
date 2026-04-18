@@ -163,7 +163,7 @@ Edite o arquivo `.env` e preencha:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-sua-chave-aqui
-OPENROUTER_MODEL=google/gemma-4-31b-it:free   # ou outro modelo disponível
+OPENROUTER_MODEL=mistralai/ministral-3b-2512   # ou outro modelo disponível
 OPENROUTER_REFERER=http://localhost:8000     # URL da sua aplicação
 ```
 
@@ -302,7 +302,7 @@ Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
 | `DATABASE_URL` | String de conexão do banco de dados | `postgresql+psycopg://...` |
 | `REDIS_URL` | URL do Redis | `redis://redis:6379/0` |
 | `OPENROUTER_API_KEY` | Chave da API OpenRouter | *(obrigatório)* |
-| `OPENROUTER_MODEL` | Modelo de IA a utilizar | `google/gemma-4-31b-it:free` |
+| `OPENROUTER_MODEL` | Modelo de IA a utilizar | `mistralai/ministral-3b-2512` |
 | `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
 | `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |
@@ -472,7 +472,7 @@ Edit `.env` and fill in your values:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
-OPENROUTER_MODEL=google/gemma-4-31b-it:free   # or another available model
+OPENROUTER_MODEL=mistralai/ministral-3b-2512   # or another available model
 OPENROUTER_REFERER=http://localhost:8000     # your application URL
 ```
 
@@ -611,7 +611,7 @@ Tests live in `tests/` and follow the `test_<module>.py` convention.
 | `DATABASE_URL` | Database connection string | `postgresql+psycopg://...` |
 | `REDIS_URL` | Redis URL | `redis://redis:6379/0` |
 | `OPENROUTER_API_KEY` | OpenRouter API key | *(required)* |
-| `OPENROUTER_MODEL` | AI model to use | `google/gemma-4-31b-it:free` |
+| `OPENROUTER_MODEL` | AI model to use | `mistralai/ministral-3b-2512` |
 | `OPENROUTER_REFERER` | Referrer URL for OpenRouter | — |
 | `OPENROUTER_TITLE` | Application title in OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Primary queue name observed by diagnostics | `celery` |

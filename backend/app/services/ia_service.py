@@ -191,18 +191,43 @@ def build_extraction_prompt(document_text: str) -> str:
         f'"{field_name}": 0.0' for field_name in DOCUMENT_EXTRACTION_FIELDS
     )
     failed_fields_template = ", ".join(f'"{field_name}"' for field_name in DOCUMENT_EXTRACTION_FIELDS[:2])
+    label_mapping_text = "\n".join(
+        [
+            "- numero_nf: procure primeiro por NUMERO_DOCUMENTO, NUMERO_NF, NF, NOTA_FISCAL",
+            "- cnpj_emitente: procure primeiro por CNPJ_FORNECEDOR, CNPJ_EMITENTE, CNPJ_PRESTADOR",
+            "- cnpj_destinatario: procure por CNPJ_DESTINATARIO, CNPJ_CLIENTE, CNPJ_TOMADOR, CNPJ_PAGADOR; se nao existir no TXT, retorne null",
+            "- data_emissao: prefira DATA_EMISSAO_NF; se nao existir, use DATA_EMISSAO",
+            "- data_pagamento: procure por DATA_PAGAMENTO, PAGO_EM, DATA_QUITACAO",
+            "- valor_total: procure por VALOR_TOTAL, VALOR_BRUTO, VALOR_LIQUIDO, nessa ordem; retorne apenas o numero decimal",
+            "- aprovador: procure por APROVADO_POR, APROVADOR, AUTORIZADO_POR",
+            "- descricao: procure por DESCRICAO_SERVICO, DESCRICAO_PRODUTO, DESCRICAO, HISTORICO, OBJETO",
+        ]
+    )
 
     return f"""
-Voce e um extrator de dados de documentos fiscais brasileiros.
-Analise o texto abaixo e extraia os campos em formato JSON.
-Se um campo nao for encontrado, retorne null para ele.
-Retorne APENAS o JSON, sem explicacoes.
+Voce e um extrator deterministico de dados de documentos fiscais e financeiros brasileiros.
+Sua unica tarefa e localizar campos literais no texto e devolve-los em JSON estruturado.
+Nao escreva resumo, analise, classificacao, comentarios, markdown, introducao ou texto fora do JSON.
+Se um campo nao for encontrado com seguranca, retorne null para ele.
+Nao invente, nao complete com suposicoes e nao use conhecimento externo ao arquivo.
+Quando o arquivo estiver em formato CHAVE: VALOR, trate os rotulos explicitos como fonte primaria da extracao.
 Inclua tambem:
 - confiancas: objeto com nivel de confianca entre 0 e 1 para cada campo
 - extraction_failed_fields: lista com os nomes dos campos que nao puderam ser extraidos
 
 Campos a extrair:
 {fields_text}
+
+Regras de extracao para o formato de arquivo recebido:
+- Os TXTs normalmente usam uma linha por campo, no padrao CHAVE: VALOR.
+- Preserve o valor textual de numero_nf como aparece no arquivo, inclusive prefixos como NF-.
+- Converta datas para YYYY-MM-DD.
+- Converta valores monetarios brasileiros para numero decimal sem R$, sem separador de milhar e com ponto decimal.
+- Ignore campos administrativos que nao fazem parte do schema, como HASH_VERIFICACAO, STATUS, BANCO_DESTINO e TIPO_DOCUMENTO.
+- Use a confianca mais alta quando houver correspondencia direta de rotulo; reduza a confianca quando houver normalizacao, sinonimo ou ambiguidade.
+
+Mapeamento preferencial de rotulos:
+{label_mapping_text}
 
 Formato esperado:
 {{
@@ -424,7 +449,11 @@ def _build_request_payload(document_text: str) -> dict[str, Any]:
         "messages": [
             {
                 "role": "system",
-                "content": "Voce extrai dados estruturados de documentos fiscais brasileiros.",
+                "content": (
+                    "Voce extrai dados estruturados de documentos fiscais brasileiros. "
+                    "Responda somente com um objeto JSON valido contendo exatamente as chaves solicitadas. "
+                    "Nao gere resumo, analise, explicacao ou markdown."
+                ),
             },
             {
                 "role": "user",
