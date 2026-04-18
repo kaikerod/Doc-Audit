@@ -49,6 +49,56 @@
     };
   }
 
+  function appendSelectionSummary(message, selection, maxFiles) {
+    var notes = [];
+
+    if (selection.duplicateFiles.length) {
+      notes.push(selection.duplicateFiles.length + " duplicado(s) ignorado(s)");
+    }
+
+    if (selection.invalidFiles.length) {
+      notes.push(selection.invalidFiles.length + " invalido(s) ignorado(s)");
+    }
+
+    if (selection.overflowFiles.length || selection.limitReached) {
+      notes.push("limite maximo de " + maxFiles + " arquivo(s)");
+    }
+
+    if (!notes.length) {
+      return message;
+    }
+
+    return message + " " + notes.join(". ") + ".";
+  }
+
+  function buildEmptyInsertionFeedback(selection, maxFiles) {
+    if (selection.invalidFiles.length) {
+      return {
+        message: selection.invalidFiles[0].reason,
+        tone: "error"
+      };
+    }
+
+    if (selection.duplicateFiles.length && selection.remainingSlots > 0) {
+      return {
+        message: "Os arquivos selecionados ja estao presentes no estado atual.",
+        tone: "neutral"
+      };
+    }
+
+    if (selection.limitReached) {
+      return {
+        message: "Limite maximo de " + maxFiles + " arquivos por envio atingido.",
+        tone: "error"
+      };
+    }
+
+    return {
+      message: "Nenhum arquivo novo foi adicionado.",
+      tone: "neutral"
+    };
+  }
+
   function createUploadController(options) {
     var dropzone = options.dropzone;
     var fileInput = options.fileInput;
@@ -58,6 +108,7 @@
     var onUploadSuccess = options.onUploadSuccess;
     var maxFiles = options.maxFiles || 250;
     var maxSizeBytes = options.maxSizeBytes || (5 * 1024 * 1024);
+    var acceptedFiles = [];
     var availability = options.initialAvailability || {
       enabled: true,
       message: ""
@@ -99,36 +150,43 @@
         return;
       }
 
-      var batchValidation = root.DocAuditUiLogic.validateUploadBatch(files, maxFiles);
-      if (!batchValidation.valid) {
-        setFeedback(feedbackNode, batchValidation.reason, "error");
-        fileInput.value = "";
-        return;
-      }
-
-      var invalidFile = files.find(function (file) {
-        return !root.DocAuditUiLogic.validateUploadFile(file, maxSizeBytes).valid;
+      var baseFiles = root.DocAuditUiLogic.hasUploadSelectionOverlap(acceptedFiles, files)
+        ? acceptedFiles
+        : [];
+      var selection = root.DocAuditUiLogic.mergeUploadSelection(baseFiles, files, {
+        maxFiles: maxFiles,
+        maxSizeBytes: maxSizeBytes
       });
 
-      if (invalidFile) {
-        var validation = root.DocAuditUiLogic.validateUploadFile(invalidFile, maxSizeBytes);
-        setFeedback(feedbackNode, validation.reason, "error");
+      if (!selection.addedFiles.length) {
+        var emptyInsertionFeedback = buildEmptyInsertionFeedback(selection, maxFiles);
+        setFeedback(feedbackNode, emptyInsertionFeedback.message, emptyInsertionFeedback.tone);
         fileInput.value = "";
         return;
       }
 
-      setFeedback(feedbackNode, "Enviando arquivos para o backend...", "busy");
+      setFeedback(
+        feedbackNode,
+        "Enviando " + selection.addedFiles.length + " arquivo(s) novo(s) para o backend...",
+        "busy"
+      );
 
       try {
-        var payload = await root.DocAuditApi.uploadTxtFiles(files);
+        var payload = await root.DocAuditApi.uploadTxtFiles(selection.addedFiles);
+        acceptedFiles = selection.files;
         if (typeof onUploadSuccess === "function") {
           await onUploadSuccess(payload);
         }
         var completionFeedback = buildUploadCompletionFeedback(payload);
-        setFeedback(feedbackNode, completionFeedback.message, completionFeedback.tone);
+        setFeedback(
+          feedbackNode,
+          appendSelectionSummary(completionFeedback.message, selection, maxFiles),
+          completionFeedback.tone
+        );
         fileInput.value = "";
       } catch (error) {
         setFeedback(feedbackNode, error.message, "error");
+        fileInput.value = "";
       }
     }
 

@@ -21,7 +21,7 @@ from ..services.document_processing_service import (
 )
 from ..services.audit_service import log_audit_event
 from ..services.queue_service import enqueue_upload_processing
-from ..services.upload_service import UploadNotFoundError, delete_upload
+from ..services.upload_service import UploadNotFoundError, delete_upload, delete_all_uploads
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
 
@@ -188,6 +188,23 @@ def get_upload(
     db: DbSession = Depends(get_db),
 ) -> UploadRead:
     return UploadRead.model_validate(_get_upload_or_404(db, upload_id))
+
+
+@router.delete(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove todos os uploads",
+    description="Exclui todos os registros de upload e seus arquivos físicos. Esta ação é registrada no log de auditoria.",
+)
+def remove_all_uploads(
+    request: Request,
+    db: DbSession = Depends(get_db),
+) -> Response:
+    delete_all_uploads(
+        db,
+        ip=request.client.host if request.client else None,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(

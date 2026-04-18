@@ -12,7 +12,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/style.css?v=4" />
   </head>
   <body>
     <div class="page-shell">
@@ -296,6 +296,16 @@
                   </p>
                 </div>
               </div>
+
+              <div id="clear-all-cluster" class="clear-all-cluster" hidden>
+                <div class="clear-all-cluster__info">
+                  <span class="clear-all-cluster__eyebrow">Limpeza</span>
+                  <p>Remove todas as notas da mesa de auditoria.</p>
+                </div>
+                <button id="clear-all-button" type="button" class="button button--danger-fill">
+                  Limpar tudo
+                </button>
+              </div>
             </div>
 
             <div class="table-shell">
@@ -324,7 +334,7 @@
                     <th>Aprovador</th>
                     <th>Status</th>
                     <th>Flags</th>
-                    <th>A&ccedil;&otilde;es</th>
+                    <th class="col-actions">A&ccedil;&otilde;es</th>
                   </tr>
                 </thead>
                 <tbody id="results-table-body"></tbody>
@@ -369,11 +379,11 @@
       </main>
     </div>
 
-    <script src="js/ui-logic.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/upload.js"></script>
-    <script src="js/export.js"></script>
-    <script src="js/tabela.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/ui-logic.js?v=2"></script>
+    <script src="js/api.js?v=2"></script>
+    <script src="js/upload.js?v=2"></script>
+    <script src="js/export.js?v=2"></script>
+    <script src="js/tabela.js?v=2"></script>
+    <script src="js/app.js?v=2"></script>
   </body>
 </html>

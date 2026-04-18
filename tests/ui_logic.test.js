@@ -5,7 +5,9 @@ const {
   filterDocuments,
   formatCurrencyBRL,
   getSeverityBadgeClass,
+  hasUploadSelectionOverlap,
   mapApiDocumentToViewModel,
+  mergeUploadSelection,
   validateUploadBatch,
   validateUploadFile
 } = require("../frontend/js/ui-logic.js");
@@ -130,6 +132,100 @@ describe("DocAudit UI logic", () => {
       valid: false,
       reason: "Limite maximo de 250 arquivos por envio."
     });
+  });
+
+  test("mergeUploadSelection adiciona ate o limite quando a primeira selecao excede o maximo", () => {
+    const files = Array.from({ length: 4 }, (_, index) => ({
+      name: "nota-" + index + ".txt",
+      size: 1024,
+      lastModified: index + 1
+    }));
+
+    const result = mergeUploadSelection([], files, {
+      maxFiles: 2,
+      maxSizeBytes: 5 * 1024 * 1024
+    });
+
+    expect(result.addedFiles.map((file) => file.name)).toEqual(["nota-0.txt", "nota-1.txt"]);
+    expect(result.files.map((file) => file.name)).toEqual(["nota-0.txt", "nota-1.txt"]);
+    expect(result.overflowFiles.map((file) => file.name)).toEqual(["nota-2.txt", "nota-3.txt"]);
+    expect(result.limitReached).toBe(true);
+    expect(result.remainingSlots).toBe(0);
+  });
+
+  test("mergeUploadSelection ignora arquivos ja presentes e preenche vagas restantes ate o limite", () => {
+    const currentFiles = [
+      { name: "nota-0.txt", size: 1024, lastModified: 1 },
+      { name: "nota-1.txt", size: 1024, lastModified: 2 }
+    ];
+    const nextFiles = [
+      { name: "nota-0.txt", size: 1024, lastModified: 1 },
+      { name: "nota-1.txt", size: 1024, lastModified: 2 },
+      { name: "nota-2.txt", size: 1024, lastModified: 3 },
+      { name: "nota-3.txt", size: 1024, lastModified: 4 }
+    ];
+
+    const result = mergeUploadSelection(currentFiles, nextFiles, {
+      maxFiles: 3,
+      maxSizeBytes: 5 * 1024 * 1024
+    });
+
+    expect(result.files.map((file) => file.name)).toEqual([
+      "nota-0.txt",
+      "nota-1.txt",
+      "nota-2.txt"
+    ]);
+    expect(result.addedFiles.map((file) => file.name)).toEqual(["nota-2.txt"]);
+    expect(result.duplicateFiles.map((file) => file.name)).toEqual([
+      "nota-0.txt",
+      "nota-1.txt"
+    ]);
+    expect(result.overflowFiles.map((file) => file.name)).toEqual(["nota-3.txt"]);
+    expect(result.limitReached).toBe(true);
+    expect(result.remainingSlots).toBe(0);
+  });
+
+  test("mergeUploadSelection ignora invalidos e continua adicionando os validos seguintes", () => {
+    const result = mergeUploadSelection(
+      [],
+      [
+        { name: "nota-0.pdf", size: 1024, lastModified: 1 },
+        { name: "nota-1.txt", size: 2048, lastModified: 2 },
+        { name: "nota-2.txt", size: 0, lastModified: 3 }
+      ],
+      {
+        maxFiles: 5,
+        maxSizeBytes: 5 * 1024 * 1024
+      }
+    );
+
+    expect(result.files.map((file) => file.name)).toEqual(["nota-1.txt"]);
+    expect(result.addedFiles.map((file) => file.name)).toEqual(["nota-1.txt"]);
+    expect(result.invalidFiles.map((entry) => entry.reason)).toEqual([
+      "Apenas arquivos .txt são permitidos.",
+      "Arquivos vazios não são permitidos."
+    ]);
+    expect(result.remainingSlots).toBe(4);
+  });
+
+  test("hasUploadSelectionOverlap identifica quando a nova selecao reaproveita arquivos ja adicionados", () => {
+    const currentFiles = [
+      { name: "nota-0.txt", size: 1024, lastModified: 1 },
+      { name: "nota-1.txt", size: 1024, lastModified: 2 }
+    ];
+
+    expect(
+      hasUploadSelectionOverlap(currentFiles, [
+        { name: "nota-1.txt", size: 1024, lastModified: 2 },
+        { name: "nota-2.txt", size: 1024, lastModified: 3 }
+      ])
+    ).toBe(true);
+
+    expect(
+      hasUploadSelectionOverlap(currentFiles, [
+        { name: "nota-3.txt", size: 1024, lastModified: 4 }
+      ])
+    ).toBe(false);
   });
 
   test("mapApiDocumentToViewModel converte o payload da API para o formato da tabela", () => {

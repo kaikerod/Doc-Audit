@@ -134,6 +134,7 @@
       severityFilter: options.severityFilter,
       layout: options.dashboardGrid,
       stats: options.stats,
+      clearAllCluster: options.clearAllCluster,
       detailPanel: {
         panel: options.detailPanel,
         title: options.detailTitle,
@@ -152,6 +153,12 @@
       });
     }
 
+    function updateClearAllVisibility() {
+      if (elements.clearAllCluster) {
+        elements.clearAllCluster.hidden = state.documents.length === 0;
+      }
+    }
+
     function render() {
       var visibleDocuments = getVisibleDocuments();
       var stats = root.DocAuditUiLogic.buildDashboardStats(state.documents);
@@ -160,6 +167,8 @@
       elements.stats.withFlags.textContent = stats.withFlags;
       elements.stats.critical.textContent = stats.critical;
       elements.stats.processing.textContent = stats.processing;
+
+      updateClearAllVisibility();
 
       elements.emptyState.hidden = visibleDocuments.length !== 0;
       elements.body.innerHTML = visibleDocuments
@@ -201,7 +210,7 @@
             renderCell(
               "A\u00e7\u00f5es",
               renderDeleteButton(document, "icon-button icon-button--danger"),
-              "table-actions-cell"
+              "table-actions-cell col-actions"
             ) +
             "</tr>"
           );
@@ -237,6 +246,10 @@
         state.selectedDocumentId = null;
       }
       render();
+    }
+
+    function getDocuments() {
+      return state.documents.slice();
     }
 
     function removeDocumentByUploadId(uploadId) {
@@ -336,6 +349,7 @@
 
     return {
       clearSelection: clearSelection,
+      getDocuments: getDocuments,
       prependDocuments: prependDocuments,
       removeDocumentByUploadId: removeDocumentByUploadId,
       render: render,

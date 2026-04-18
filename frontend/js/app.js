@@ -71,6 +71,7 @@
   function init() {
     var apiHealthIndicator = document.getElementById("api-health-indicator");
     var apiHealthCopy = document.getElementById("api-health-copy");
+    var clearAllButton = document.getElementById("clear-all-button");
     var tableController = root.DocAuditTable.createTableController({
       initialDocuments: [],
       dashboardGrid: document.getElementById("results-layout"),
@@ -84,6 +85,7 @@
       detailDeleteButton: document.getElementById("detail-delete-button"),
       detailMetadata: document.getElementById("detail-metadata"),
       detailFlags: document.getElementById("detail-flags"),
+      clearAllCluster: document.getElementById("clear-all-cluster"),
       onDeleteUpload: async function (document) {
         if (!document || !document.uploadId) {
           return;
@@ -132,6 +134,32 @@
 
     document.getElementById("detail-close-button").addEventListener("click", function () {
       tableController.clearSelection();
+    });
+
+    clearAllButton.addEventListener("click", async function () {
+      var currentDocuments = tableController.getDocuments();
+      if (!currentDocuments.length) {
+        return;
+      }
+
+      if (!root.confirm("Tem certeza que deseja excluir TODAS as notas da mesa de auditoria? Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.")) {
+        return;
+      }
+
+      clearAllButton.disabled = true;
+      clearAllButton.textContent = "Limpando...";
+
+      try {
+        await root.DocAuditApi.deleteAllUploads();
+        stopDocumentPolling();
+        tableController.setDocuments([]);
+      } catch (error) {
+        console.error(error);
+        root.alert(error && error.message ? error.message : "N\u00e3o foi poss\u00edvel limpar as notas.");
+      } finally {
+        clearAllButton.disabled = false;
+        clearAllButton.textContent = "Limpar tudo";
+      }
     });
 
     updateApiHealth(apiHealthIndicator, apiHealthCopy, uploadController);

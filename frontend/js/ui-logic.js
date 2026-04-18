@@ -269,6 +269,77 @@
     };
   }
 
+  function buildUploadFileKey(file) {
+    var fileName = file && file.name ? normalizeKeyword(file.name) : "";
+    var fileSize = file && Number.isFinite(file.size) ? String(file.size) : "0";
+    var fileLastModified = file && Number.isFinite(file.lastModified)
+      ? String(file.lastModified)
+      : "0";
+
+    return [fileName, fileSize, fileLastModified].join("::");
+  }
+
+  function mergeUploadSelection(currentFiles, nextFiles, options) {
+    var safeOptions = options || {};
+    var maxFiles = Number.isFinite(safeOptions.maxFiles) ? safeOptions.maxFiles : Infinity;
+    var maxSizeBytes = Number.isFinite(safeOptions.maxSizeBytes)
+      ? safeOptions.maxSizeBytes
+      : (5 * 1024 * 1024);
+    var mergedFiles = Array.isArray(currentFiles) ? currentFiles.slice(0, maxFiles) : [];
+    var incomingFiles = Array.isArray(nextFiles) ? nextFiles : [];
+    var knownFileKeys = new Set(mergedFiles.map(buildUploadFileKey));
+    var addedFiles = [];
+    var duplicateFiles = [];
+    var invalidFiles = [];
+    var overflowFiles = [];
+
+    incomingFiles.forEach(function (file) {
+      var fileKey = buildUploadFileKey(file);
+
+      if (knownFileKeys.has(fileKey)) {
+        duplicateFiles.push(file);
+        return;
+      }
+
+      var validation = validateUploadFile(file, maxSizeBytes);
+      if (!validation.valid) {
+        invalidFiles.push({
+          file: file,
+          reason: validation.reason
+        });
+        return;
+      }
+
+      if (mergedFiles.length >= maxFiles) {
+        overflowFiles.push(file);
+        return;
+      }
+
+      mergedFiles.push(file);
+      addedFiles.push(file);
+      knownFileKeys.add(fileKey);
+    });
+
+    return {
+      files: mergedFiles,
+      addedFiles: addedFiles,
+      duplicateFiles: duplicateFiles,
+      invalidFiles: invalidFiles,
+      overflowFiles: overflowFiles,
+      remainingSlots: Math.max(0, maxFiles - mergedFiles.length),
+      limitReached: mergedFiles.length >= maxFiles
+    };
+  }
+
+  function hasUploadSelectionOverlap(currentFiles, nextFiles) {
+    var currentFileKeys = new Set((Array.isArray(currentFiles) ? currentFiles : []).map(buildUploadFileKey));
+    var incomingFiles = Array.isArray(nextFiles) ? nextFiles : [];
+
+    return incomingFiles.some(function (file) {
+      return currentFileKeys.has(buildUploadFileKey(file));
+    });
+  }
+
   function buildApiHealthMeta(payload) {
     var safePayload = payload || {};
     var features = safePayload.features || {};
@@ -349,6 +420,7 @@
     formatCurrencyBRL: formatCurrencyBRL,
     formatDateBR: formatDateBR,
     getSeverityBadgeClass: getSeverityBadgeClass,
+    hasUploadSelectionOverlap: hasUploadSelectionOverlap,
     getStatusMeta: getStatusMeta,
     mapApiDocumentToViewModel: mapApiDocumentToViewModel,
     mapApiDocumentsToViewModels: mapApiDocumentsToViewModels,
@@ -356,6 +428,7 @@
     matchesDocumentSearch: matchesDocumentSearch,
     normalizeKeyword: normalizeKeyword,
     summarizeFlags: summarizeFlags,
+    mergeUploadSelection: mergeUploadSelection,
     validateUploadBatch: validateUploadBatch,
     validateUploadFile: validateUploadFile
   };

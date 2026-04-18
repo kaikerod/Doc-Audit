@@ -80,3 +80,47 @@ def delete_upload(
         file_path.unlink()
     except FileNotFoundError:
         return
+
+
+def delete_all_uploads(
+    db: DbSession,
+    *,
+    usuario: str | None = None,
+    ip: str | None = None,
+) -> int:
+    """Delete every upload and its associated documents. Returns the count of deleted uploads."""
+    uploads = db.scalars(
+        select(Upload).options(selectinload(Upload.documentos))
+    ).all()
+
+    if not uploads:
+        return 0
+
+    file_paths: list[Path] = []
+    deleted_count = 0
+
+    for upload in uploads:
+        file_paths.append(Path(upload.caminho_arquivo))
+        db.delete(upload)
+        deleted_count += 1
+
+    log_audit_event(
+        db,
+        evento="EXCLUSAO_TOTAL_UPLOADS",
+        entidade_tipo="upload",
+        entidade_id="*",
+        usuario=usuario,
+        ip=ip,
+        payload={"total_excluido": deleted_count},
+        commit=False,
+    )
+    db.flush()
+    db.commit()
+
+    for file_path in file_paths:
+        try:
+            file_path.unlink()
+        except FileNotFoundError:
+            continue
+
+    return deleted_count
