@@ -307,47 +307,6 @@ Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
 
 ---
 
-## 🗺️ Roadmap
-
-### ✅ Fase 1 — MVP
-- [x] Estrutura FastAPI + PostgreSQL + Docker
-- [x] Modelos de banco e migrations (Alembic)
-- [x] Endpoint de upload de arquivos TXT
-- [x] Integração com OpenRouter (extração de campos)
-- [x] Motor de detecção de anomalias
-- [x] API REST com endpoints principais
-- [x] Frontend: upload + tabela + flags de anomalia
-- [x] Exportação em CSV
-
-### 🚧 Fase 2 — Consolidação
-- [ ] Processamento assíncrono com Celery + Redis
-- [ ] Painel de detalhes (sidebar) ao clicar em um documento
-- [ ] Exportação em Excel com formatação
-- [ ] Log de auditoria completo e exportável
-- [ ] Tela de configuração de aprovadores e fornecedores
-
-### 🔮 Fase 3 — Melhorias
-- [ ] Autenticação com JWT
-- [ ] Suporte a PDF e XML de NF-e
-- [ ] Dashboard com gráficos de tendência de anomalias
-- [ ] Webhook / notificação por e-mail em anomalias críticas
-- [ ] API de bulk re-análise de documentos antigos
-
----
-
-## 🤝 Contribuindo
-
-1. Faça um fork do repositório
-2. Crie uma branch: `git checkout -b feature/minha-feature`
-3. Commit com mensagens imperativas: `Add upload router`, `Fix CNPJ validator`
-4. Abra um Pull Request descrevendo:
-   - O que foi alterado e por quê
-   - Link para a seção do PRD relacionada
-   - Evidência de testes (`pytest`, screenshots ou check manual da API)
-   - Notas sobre mudanças de schema ou migrations
-
----
-
 ## 📄 Licença
 
 Distribuído sob a licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
@@ -642,47 +601,6 @@ Tests live in `tests/` and follow the `test_<module>.py` convention.
 | `POSTGRES_PASSWORD` | Database password (Docker) | `docaudit` |
 
 > ⚠️ **Never commit your `.env` file with real secrets.** Always use `.env.example` as the template.
-
----
-
-## 🗺️ Roadmap
-
-### ✅ Phase 1 — MVP
-- [x] FastAPI + PostgreSQL + Docker project scaffold
-- [x] Database models and migrations (Alembic)
-- [x] TXT file upload endpoint
-- [x] OpenRouter integration (field extraction)
-- [x] Anomaly detection engine
-- [x] REST API with core endpoints
-- [x] Frontend: upload + table + anomaly flags
-- [x] CSV export
-
-### 🚧 Phase 2 — Consolidation
-- [ ] Async processing with Celery + Redis
-- [ ] Document details panel (sidebar on row click)
-- [ ] Excel export with formatting
-- [ ] Full exportable audit log
-- [ ] Approver and supplier configuration screen
-
-### 🔮 Phase 3 — Enhancements
-- [ ] JWT authentication
-- [ ] Support for PDF and XML (NF-e) formats
-- [ ] Anomaly trend dashboard with charts
-- [ ] Webhook / email notifications for critical anomalies
-- [ ] Bulk re-analysis API for historical documents
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a branch: `git checkout -b feature/my-feature`
-3. Commit with imperative messages: `Add upload router`, `Fix CNPJ validator`
-4. Open a Pull Request describing:
-   - What changed and why
-   - Link to the relevant PRD section
-   - Test evidence (`pytest`, screenshots, or manual API checks)
-   - Notes on schema or migration changes
 
 ---
 
