@@ -84,6 +84,9 @@ if FRONTEND_DIR.exists():
 
 @app.on_event("startup")
 def initialize_database_schema() -> None:
+    if not settings.auto_create_schema:
+        return
+
     Base.metadata.create_all(bind=engine)
 
 

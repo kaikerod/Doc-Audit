@@ -244,6 +244,8 @@ A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode 
 
 > Quando `DOC_AUDIT_PROCESSING_MODE=queue` roda na Vercel, o conteudo bruto do upload fica em staging temporario no Redis para que o worker externo nao dependa do filesystem efemero da function.
 
+> Na Vercel, `DOC_AUDIT_AUTO_CREATE_SCHEMA` deve permanecer `false` para evitar DDL no startup da function. O schema do banco deve ser preparado por migration ou processo externo.
+
 ### Observabilidade
 | Método | Rota | Descrição |
 |--------|------|-----------|
@@ -310,6 +312,7 @@ Durante o `pytest`, o projeto usa SQLite em memória para isolamento rápido; fo
 | `OPENROUTER_MODEL` | Modelo de IA a utilizar | `mistralai/ministral-3b-2512` |
 | `UPLOAD_MAX_FILES` | Quantidade máxima de arquivos `.txt` aceitos por envio | `250` |
 | `UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS` | TTL, em segundos, do staging temporario do upload no Redis | `86400` |
+| `DOC_AUDIT_AUTO_CREATE_SCHEMA` | Executa `create_all()` no startup da API | `true` local / `false` na Vercel |
 | `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
 | `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |

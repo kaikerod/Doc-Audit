@@ -254,6 +254,10 @@ class Settings:
         "UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS",
         86400,
     )
+    auto_create_schema: bool = _parse_bool_env(
+        "DOC_AUDIT_AUTO_CREATE_SCHEMA",
+        not _is_vercel_environment(),
+    )
     # Tests use SQLite for fast isolation. Other runs expect Postgres, either from
     # the local Docker defaults or the Vercel Postgres env vars.
     database_url: str = _resolve_database_url()

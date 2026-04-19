@@ -9,6 +9,7 @@ Este projeto possui um caminho de deploy compativel com a Vercel para o backend 
 - o processamento de uploads roda de forma assincrona via Celery + Redis
 - o worker Celery precisa rodar fora da Vercel, apontando para o mesmo Redis
 - o conteudo bruto do TXT fica em staging temporario no Redis para o worker conseguir processar o upload fora do filesystem efemero da Vercel
+- a function nao executa `create_all()` na Vercel; schema deve existir previamente no banco persistente
 - o Supabase fornece o Postgres persistente usado pela aplicacao
 - o Redis e obrigatorio para a fila de processamento, cooldown/rate limit e observabilidade compartilhada
 - sem um banco persistente configurado, o deploy falha ao iniciar em vez de cair em SQLite temporario
@@ -83,6 +84,7 @@ OPENROUTER_MODEL=mistralai/ministral-3b-2512
 OPENROUTER_REFERER=https://seu-projeto.vercel.app
 OPENROUTER_TITLE=DocAudit
 DOC_AUDIT_PROCESSING_MODE=queue
+DOC_AUDIT_AUTO_CREATE_SCHEMA=false
 UPLOAD_MAX_FILES=5
 UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS=86400
 ```
@@ -91,6 +93,10 @@ O backend aceita automaticamente `DATABASE_URL`, `POSTGRES_URL`,
 `POSTGRES_URL_NON_POOLING` e `POSTGRES_PRISMA_URL`. Com a integracao Supabase,
 na pratica o deploy usa `POSTGRES_URL` e `POSTGRES_URL_NON_POOLING` sem exigir
 duplicacao manual para `DATABASE_URL`.
+
+`DOC_AUDIT_AUTO_CREATE_SCHEMA=false` e o padrao recomendado na Vercel. Em ambiente serverless,
+o startup da function nao deve executar DDL automaticamente; use migrations ou outro processo
+controlado para preparar o schema antes de publicar.
 
 Se voce nao usar a integracao do Marketplace, defina manualmente uma destas opcoes:
 
