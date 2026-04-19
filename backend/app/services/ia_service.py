@@ -191,6 +191,23 @@ def build_extraction_prompt(document_text: str) -> str:
         f'"{field_name}": 0.0' for field_name in DOCUMENT_EXTRACTION_FIELDS
     )
     failed_fields_template = ", ".join(f'"{field_name}"' for field_name in DOCUMENT_EXTRACTION_FIELDS[:2])
+    storage_fields_text = "\n".join(
+        [
+            "- TIPO_DOCUMENTO: tipo do documento para contextualizar a analise",
+            "- NUMERO_DOCUMENTO: numero do documento original no arquivo",
+            "- DATA_EMISSAO: data geral de emissao informada no TXT",
+            "- FORNECEDOR: nome do fornecedor/emitente",
+            "- CNPJ_FORNECEDOR: CNPJ do fornecedor/emitente",
+            "- DESCRICAO_SERVICO: descricao detalhada do servico ou produto",
+            "- VALOR_BRUTO: valor bruto total registrado no documento",
+            "- DATA_PAGAMENTO: data efetiva do pagamento",
+            "- DATA_EMISSAO_NF: data fiscal da nota, quando existir",
+            "- APROVADO_POR: nome do aprovador",
+            "- BANCO_DESTINO: conta/banco de destino do pagamento",
+            "- STATUS: situacao do documento",
+            "- HASH_VERIFICACAO: hash de verificacao do arquivo",
+        ]
+    )
     label_mapping_text = "\n".join(
         [
             "- numero_nf: procure primeiro por NUMERO_DOCUMENTO, NUMERO_NF, NF, NOTA_FISCAL",
@@ -206,11 +223,14 @@ def build_extraction_prompt(document_text: str) -> str:
 
     return f"""
 Voce e um extrator deterministico de dados de documentos fiscais e financeiros brasileiros.
-Sua unica tarefa e localizar campos literais no texto e devolve-los em JSON estruturado.
+Sua unica tarefa e analisar todos os campos do arquivo, identificar possiveis incongruencias e devolver apenas o JSON estruturado solicitado.
 Nao escreva resumo, analise, classificacao, comentarios, markdown, introducao ou texto fora do JSON.
 Se um campo nao for encontrado com seguranca, retorne null para ele.
 Nao invente, nao complete com suposicoes e nao use conhecimento externo ao arquivo.
 Quando o arquivo estiver em formato CHAVE: VALOR, trate os rotulos explicitos como fonte primaria da extracao.
+Antes de responder, confira a consistencia de TODOS os campos presentes no TXT, inclusive datas, CNPJ, aprovador, status, fornecedor, valor, numero do documento e descricao.
+Se houver conflito entre campos equivalentes, escolha a leitura mais especifica e mais confiavel, sem misturar valores.
+Se houver incoerencia evidente entre datas, CNPJ ou aprovador, nao chute: prefira null ou o valor mais claramente suportado pelo texto.
 Inclua tambem:
 - confiancas: objeto com nivel de confianca entre 0 e 1 para cada campo
 - extraction_failed_fields: lista com os nomes dos campos que nao puderam ser extraidos
@@ -220,14 +240,27 @@ Campos a extrair:
 
 Regras de extracao para o formato de arquivo recebido:
 - Os TXTs normalmente usam uma linha por campo, no padrao CHAVE: VALOR.
+- Analise tambem os campos administrativos do arquivo para validar coerencia, mesmo que eles nao sejam retornados no JSON final.
+- Verificacoes obrigatorias de coerencia:
+  - Datas: compare DATA_EMISSAO, DATA_EMISSAO_NF e DATA_PAGAMENTO. Se DATA_EMISSAO_NF e DATA_EMISSAO divergirem, use a data fiscal mais especifica para data_emissao e sinalize menor confianca. Se DATA_PAGAMENTO for anterior a qualquer data de emissao, trate como incongruencia.
+  - CNPJ: compare CNPJ_FORNECEDOR, CNPJ_EMITENTE, CNPJ_PRESTADOR e outros CNPJ explicitos. O CNPJ do fornecedor/emitente e a referencia principal, mas nao substitua numeros diferentes por semelhanca visual. CNPJ com digitos invalidos, mascara incorreta ou divergente deve reduzir a confianca.
+  - Aprovador: use apenas APROVADO_POR, APROVADOR ou AUTORIZADO_POR quando estiverem declarados explicitamente. Nao infira aprovador a partir de cargo, status, banco ou nome de fornecedor. Se houver conflito entre nomes, prefira o rotulo mais especifico.
+  - Valor: confirme VALOR_BRUTO, VALOR_TOTAL e VALOR_LIQUIDO quando aparecerem. Se houver conflito material entre valores, use o mais explicitamente associado ao documento e reduza a confianca.
+  - Numero e descricao: confira NUMERO_DOCUMENTO, NUMERO_NF, DESCRICAO_SERVICO e DESCRICAO_PRODUTO para evitar mistura de documento, servico ou numero errado.
+  - Status e metadados: STATUS, TIPO_DOCUMENTO, BANCO_DESTINO e HASH_VERIFICACAO servem para coerencia interna; nunca use esses campos para inventar valores ausentes.
 - Preserve o valor textual de numero_nf como aparece no arquivo, inclusive prefixos como NF-.
 - Converta datas para YYYY-MM-DD.
 - Converta valores monetarios brasileiros para numero decimal sem R$, sem separador de milhar e com ponto decimal.
 - Ignore campos administrativos que nao fazem parte do schema, como HASH_VERIFICACAO, STATUS, BANCO_DESTINO e TIPO_DOCUMENTO.
 - Use a confianca mais alta quando houver correspondencia direta de rotulo; reduza a confianca quando houver normalizacao, sinonimo ou ambiguidade.
+- Se um campo estiver presente com informacoes conflitantes no TXT, prefira o rotulo mais especifico, mas nao esconda a incongruencia: reduza a confianca do campo correspondente.
+- Se o documento trouxer mais de uma pista para o mesmo campo, priorize o rotulo mais especifico e mais recente no texto quando isso fizer sentido.
 
 Mapeamento preferencial de rotulos:
 {label_mapping_text}
+
+Campos adicionais presentes no TXT que devem ser lidos para validacao de coerencia:
+{storage_fields_text}
 
 Formato esperado:
 {{
@@ -451,8 +484,9 @@ def _build_request_payload(document_text: str) -> dict[str, Any]:
                 "role": "system",
                 "content": (
                     "Voce extrai dados estruturados de documentos fiscais brasileiros. "
-                    "Responda somente com um objeto JSON valido contendo exatamente as chaves solicitadas. "
-                    "Nao gere resumo, analise, explicacao ou markdown."
+                    "Analise todos os campos do texto, verifique incongruencias de datas, CNPJ, aprovador e demais campos, "
+                    "e responda somente com um objeto JSON valido contendo exatamente as chaves solicitadas. "
+                    "Nao gere resumo, explicacao ou markdown."
                 ),
             },
             {

@@ -33,7 +33,24 @@ def test_build_extraction_prompt_contains_expected_fields() -> None:
     assert "NUMERO_DOCUMENTO" in prompt
     assert "DATA_EMISSAO_NF" in prompt
     assert "VALOR_BRUTO" in prompt
-    assert "Nao escreva resumo, analise" in prompt
+    assert (
+        "analise todos os campos do arquivo" in prompt.lower()
+        or "analisar todos os campos do arquivo" in prompt.lower()
+    )
+    assert "incongruencias" in prompt.lower()
+    assert "TIPO_DOCUMENTO" in prompt
+    assert "FORNECEDOR" in prompt
+    assert "CNPJ_FORNECEDOR" in prompt
+    assert "APROVADO_POR" in prompt
+    assert "BANCO_DESTINO" in prompt
+    assert "STATUS" in prompt
+    assert "HASH_VERIFICACAO" in prompt
+    assert "Verificacoes obrigatorias de coerencia" in prompt
+    assert "DATA_EMISSAO_NF" in prompt and "DATA_PAGAMENTO" in prompt
+    assert "CNPJ_PRESTADOR" in prompt
+    assert "VALOR_BRUTO" in prompt and "VALOR_TOTAL" in prompt and "VALOR_LIQUIDO" in prompt
+    assert "NUMERO_DOCUMENTO" in prompt and "NUMERO_NF" in prompt
+    assert "reduza a confianca do campo correspondente" in prompt.lower()
 
 
 @patch("backend.app.services.ia_service.httpx.post")
