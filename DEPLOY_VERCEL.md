@@ -83,6 +83,9 @@ O backend aceita automaticamente `DATABASE_URL`, `POSTGRES_URL`,
 `POSTGRES_URL_NON_POOLING` e `POSTGRES_PRISMA_URL`. Com a integracao Supabase,
 na pratica o deploy usa `POSTGRES_URL` e `POSTGRES_URL_NON_POOLING` sem exigir
 duplicacao manual para `DATABASE_URL`.
+As conexoes `postgresql+psycopg` desabilitam prepared statements automaticos
+(`prepare_threshold=None`) para evitar erros de compatibilidade com poolers
+serverless, como os usados por Supabase/Vercel.
 
 `DOC_AUDIT_AUTO_CREATE_SCHEMA=false` e o padrao recomendado na Vercel. Em ambiente serverless,
 o startup da function nao deve executar DDL automaticamente; use migrations ou outro processo
