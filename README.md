@@ -74,6 +74,8 @@ docker compose exec web alembic upgrade head
 | Variável | Descrição |
 |---|---|
 | `DATABASE_URL` | String de conexão do banco |
+| `POSTGRES_URL` | URL do banco injetada pela integração Supabase/Vercel |
+| `POSTGRES_URL_NON_POOLING` | URL direta do banco; preferida quando disponível |
 | `OPENROUTER_API_KEY` | Chave da OpenRouter |
 | `OPENROUTER_MODEL` | Modelo usado na extração |
 | `OPENROUTER_REFERER` | Referer enviado à OpenRouter |
@@ -83,7 +85,9 @@ docker compose exec web alembic upgrade head
 | `APP_NAME` | Nome da aplicação |
 | `APP_VERSION` | Versão da aplicação |
 
-Na Vercel, use `DOC_AUDIT_PROCESSING_MODE=sync` e mantenha `DOC_AUDIT_AUTO_CREATE_SCHEMA=false`.
+Na Vercel, use `DOC_AUDIT_PROCESSING_MODE=sync`, mantenha
+`DOC_AUDIT_AUTO_CREATE_SCHEMA=false` e prefira `POSTGRES_URL_NON_POOLING` se for
+configurar a conexão manualmente.
 
 ## Testes
 

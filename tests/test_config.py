@@ -72,6 +72,17 @@ def test_resolve_database_url_uses_vercel_postgres_url_when_database_url_missing
     )
 
 
+def test_resolve_database_url_prefers_non_pooling_postgres_url_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_URL_NON_POOLING", "postgresql://non-pooling")
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://pooled")
+    monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
+
+    assert config._resolve_database_url() == "postgresql+psycopg://non-pooling"
+
+
 def test_normalize_database_url_strips_supabase_query_params_for_psycopg(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,5 +246,8 @@ def test_resolve_database_url_requires_persistent_database_on_vercel(
     monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
     monkeypatch.setenv("VERCEL", "1")
 
-    with pytest.raises(RuntimeError, match="Vercel exige um banco persistente"):
+    with pytest.raises(
+        RuntimeError,
+        match="Vercel exige um banco persistente",
+    ):
         config._resolve_database_url()

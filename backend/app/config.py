@@ -13,8 +13,8 @@ LOCAL_POSTGRES_DATABASE_URL = "postgresql+psycopg://docaudit:docaudit@db:5432/do
 TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 VERCEL_DATABASE_URL_ENV_NAMES = (
     "DATABASE_URL",
-    "POSTGRES_URL",
     "POSTGRES_URL_NON_POOLING",
+    "POSTGRES_URL",
     "POSTGRES_PRISMA_URL",
 )
 PSYCOPG_UNSUPPORTED_POSTGRES_QUERY_KEYS = frozenset({"supa"})
@@ -169,7 +169,8 @@ def _resolve_database_url() -> str:
 
     if _is_vercel_environment():
         raise RuntimeError(
-            "A Vercel exige um banco persistente. Configure DATABASE_URL ou POSTGRES_URL."
+            "A Vercel exige um banco persistente. Configure DATABASE_URL, "
+            "POSTGRES_URL_NON_POOLING ou POSTGRES_URL."
         )
 
     return _normalize_database_url(_default_database_url())

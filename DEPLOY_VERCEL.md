@@ -81,8 +81,11 @@ UPLOAD_MAX_FILES=5
 
 O backend aceita automaticamente `DATABASE_URL`, `POSTGRES_URL`,
 `POSTGRES_URL_NON_POOLING` e `POSTGRES_PRISMA_URL`. Com a integracao Supabase,
-na pratica o deploy usa `POSTGRES_URL` e `POSTGRES_URL_NON_POOLING` sem exigir
-duplicacao manual para `DATABASE_URL`.
+o deploy normalmente recebe `POSTGRES_URL` e `POSTGRES_URL_NON_POOLING`
+automaticamente, sem exigir duplicacao manual para `DATABASE_URL`.
+O resolver de configuracao prefere `POSTGRES_URL_NON_POOLING` quando ele esta
+disponivel, porque esse e o caminho mais previsivel para conexoes persistentes em
+ambientes serverless.
 As conexoes `postgresql+psycopg` desabilitam prepared statements automaticos
 (`prepare_threshold=None`) para evitar erros de compatibilidade com poolers
 serverless, como os usados por Supabase/Vercel.
@@ -96,7 +99,7 @@ Se voce nao usar a integracao do Marketplace, defina manualmente uma destas opco
 ```env
 DATABASE_URL=postgresql+psycopg://...
 # ou
-POSTGRES_URL=postgresql://...
+POSTGRES_URL_NON_POOLING=postgresql://...
 ```
 
 Se nenhuma dessas variaveis estiver definida, a aplicacao aborta a inicializacao na Vercel.
