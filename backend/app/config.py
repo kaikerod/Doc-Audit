@@ -1,4 +1,5 @@
 import os
+import sys
 from math import ceil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +10,8 @@ from sqlalchemy.engine.url import make_url
 DOCKER_DATABASE_HOST = "db"
 HOST_DATABASE_HOST = "127.0.0.1"
 DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+LOCAL_POSTGRES_DATABASE_URL = "postgresql+psycopg://docaudit:docaudit@db:5432/docaudit"
+TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 VERCEL_DATABASE_URL_ENV_NAMES = (
     "DATABASE_URL",
     "POSTGRES_URL",
@@ -95,6 +98,10 @@ def _is_vercel_environment() -> bool:
     )
 
 
+def _is_test_environment() -> bool:
+    return bool(os.getenv("PYTEST_CURRENT_TEST", "").strip() or "pytest" in sys.modules)
+
+
 def _default_upload_dir() -> str:
     if _is_vercel_environment():
         return str(Path(tempfile.gettempdir()) / "docaudit" / "uploads")
@@ -104,10 +111,12 @@ def _default_upload_dir() -> str:
 
 def _default_database_url() -> str:
     if _is_vercel_environment():
-        temp_database_path = (Path(tempfile.gettempdir()) / "docaudit.db").as_posix()
-        return f"sqlite+pysqlite:///{temp_database_path}"
+        return ""
 
-    return "sqlite+pysqlite:///./docaudit.db"
+    if _is_test_environment():
+        return TEST_DATABASE_URL
+
+    return LOCAL_POSTGRES_DATABASE_URL
 
 
 def _resolve_processing_mode() -> str:
@@ -133,7 +142,7 @@ def _normalize_postgres_driver(parsed_url):
 def _normalize_database_url(database_url: str) -> str:
     normalized_url = database_url.strip()
     if not normalized_url or _is_running_in_container():
-        return normalized_url or DEFAULT_DATABASE_URL
+        return normalized_url or _default_database_url()
 
     try:
         parsed_url = make_url(normalized_url)
@@ -149,17 +158,18 @@ def _normalize_database_url(database_url: str) -> str:
     # When the API starts directly on the host, switch to the published Postgres port.
     return parsed_url.set(host=HOST_DATABASE_HOST).render_as_string(hide_password=False)
 
-
-DEFAULT_DATABASE_URL = _default_database_url()
-
-
 def _resolve_database_url() -> str:
     for env_name in VERCEL_DATABASE_URL_ENV_NAMES:
         configured_url = os.getenv(env_name, "")
         if configured_url.strip():
             return _normalize_database_url(configured_url)
 
-    return _normalize_database_url(DEFAULT_DATABASE_URL)
+    if _is_vercel_environment():
+        raise RuntimeError(
+            "A Vercel exige um banco persistente. Configure DATABASE_URL ou POSTGRES_URL."
+        )
+
+    return _normalize_database_url(_default_database_url())
 
 
 LEGACY_OPENROUTER_TIMEOUT_SECONDS = _coerce_positive_float(
@@ -221,8 +231,8 @@ class Settings:
     upload_dir: str = os.getenv("UPLOAD_DIR", _default_upload_dir())
     upload_max_size_bytes: int = int(os.getenv("UPLOAD_MAX_SIZE_BYTES", str(5 * 1024 * 1024)))
     upload_max_files: int = int(os.getenv("UPLOAD_MAX_FILES", "250"))
-    # SQLite keeps direct local runs lightweight. Vercel Postgres integrations can
-    # inject `POSTGRES_URL*`, so accept those without requiring a duplicate `DATABASE_URL`.
+    # Tests use SQLite for fast isolation. Other runs expect Postgres, either from
+    # the local Docker defaults or the Vercel Postgres env vars.
     database_url: str = _resolve_database_url()
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")

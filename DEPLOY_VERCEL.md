@@ -9,6 +9,7 @@ Este projeto agora possui um caminho de deploy compativel com a Vercel para o ba
 - o processamento de uploads muda para o modo sincrono
 - Redis/Celery deixam de ser obrigatorios nesse ambiente
 - Postgres externo continua obrigatorio para persistencia
+- sem um banco persistente configurado, o deploy falha ao iniciar em vez de cair em SQLite temporario
 
 ## Diferenca em relacao ao ambiente local
 
@@ -65,6 +66,8 @@ DATABASE_URL=postgresql+psycopg://...
 # ou
 POSTGRES_URL=postgresql://...
 ```
+
+Se nenhuma dessas variaveis estiver definida, a aplicacao aborta a inicializacao na Vercel.
 
 `UPLOAD_MAX_FILES=5` e uma recomendacao pratica para evitar requests longas demais no modo sincrono.
 O frontend web divide selecoes maiores em varias requisicoes sequenciais, respeitando esse limite por request.

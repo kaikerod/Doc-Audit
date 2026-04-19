@@ -47,7 +47,7 @@ def test_normalize_database_url_uses_sqlite_default_when_empty(
 ) -> None:
     monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
 
-    assert config._normalize_database_url("   ") == config.DEFAULT_DATABASE_URL
+    assert config._normalize_database_url("   ") == config.TEST_DATABASE_URL
 
 
 def test_resolve_database_url_prefers_database_url_over_vercel_postgres_keys(
@@ -64,6 +64,25 @@ def test_resolve_database_url_uses_vercel_postgres_url_when_database_url_missing
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("POSTGRES_URL", "postgresql://docaudit:docaudit@db:5432/docaudit")
+    monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
+
+    assert (
+        config._resolve_database_url()
+        == "postgresql+psycopg://docaudit:docaudit@127.0.0.1:5432/docaudit"
+    )
+
+
+def test_resolve_database_url_uses_local_postgres_default_outside_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
+    monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.delenv("VERCEL_ENV", raising=False)
+    monkeypatch.delenv("VERCEL_URL", raising=False)
+    monkeypatch.setattr(config, "_is_test_environment", lambda: False)
     monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
 
     assert (
@@ -158,10 +177,37 @@ def test_default_upload_dir_uses_temp_directory_on_vercel(
     assert Path(config._default_upload_dir()).parts[-2:] == ("docaudit", "uploads")
 
 
-def test_default_database_url_uses_temp_sqlite_on_vercel(
+def test_default_database_url_uses_sqlite_during_tests() -> None:
+    assert config._default_database_url() == config.TEST_DATABASE_URL
+
+
+def test_default_database_url_uses_local_postgres_outside_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "_is_test_environment", lambda: False)
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.delenv("VERCEL_ENV", raising=False)
+    monkeypatch.delenv("VERCEL_URL", raising=False)
+
+    assert config._default_database_url() == config.LOCAL_POSTGRES_DATABASE_URL
+
+
+def test_default_database_url_is_empty_on_vercel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VERCEL", "1")
 
-    assert config._default_database_url().startswith("sqlite+pysqlite:///")
-    assert config._default_database_url().endswith("/docaudit.db")
+    assert config._default_database_url() == ""
+
+
+def test_resolve_database_url_requires_persistent_database_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_URL_NON_POOLING", raising=False)
+    monkeypatch.delenv("POSTGRES_PRISMA_URL", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+
+    with pytest.raises(RuntimeError, match="Vercel exige um banco persistente"):
+        config._resolve_database_url()

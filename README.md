@@ -240,6 +240,8 @@ A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode 
 | `GET/POST` | `/api/v1/fornecedores` | Gerencia fornecedores (CNPJ) |
 | `GET` | `/api/v1/health` | Status da aplicação e dependências |
 
+> Na Vercel, `DATABASE_URL` ou um dos env vars do Vercel Postgres são obrigatórios. Sem banco persistente, a inicialização falha para evitar perda de dados.
+
 ### Observabilidade
 | Método | Rota | Descrição |
 |--------|------|-----------|
@@ -292,6 +294,7 @@ python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 -
 ```
 
 Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
+Durante o `pytest`, o projeto usa SQLite em memória para isolamento rápido; fora dos testes, o backend espera PostgreSQL.
 
 ---
 
@@ -550,6 +553,8 @@ DocAudit's API is fully documented via **Swagger/OpenAPI**. You can access the i
 | `GET/POST` | `/api/v1/fornecedores` | Manage suppliers (CNPJ) |
 | `GET` | `/api/v1/health` | Application and dependency status |
 
+> On Vercel, `DATABASE_URL` or one of the Vercel Postgres env vars is required. Without a persistent database, startup fails to avoid data loss.
+
 ### Observability
 | Method | Route | Description |
 |--------|-------|-------------|
@@ -602,6 +607,7 @@ python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 -
 ```
 
 Tests live in `tests/` and follow the `test_<module>.py` convention.
+During `pytest`, the project uses in-memory SQLite for fast isolation; outside tests, the backend expects PostgreSQL.
 
 ---
 
