@@ -27,6 +27,9 @@ def test_health_reports_limited_mode_without_openrouter_key(
         },
         "features": {
             "uploads_enabled": False,
+            "upload_max_files": settings.upload_max_files,
+            "upload_max_size_bytes": settings.upload_max_size_bytes,
+            "processing_mode": settings.processing_mode,
         },
         "detail": "OPENROUTER_API_KEY nao configurada. Configure a integracao de IA para habilitar uploads.",
     }
@@ -54,6 +57,9 @@ def test_health_reports_uploads_enabled_when_openrouter_key_exists(
         },
         "features": {
             "uploads_enabled": True,
+            "upload_max_files": settings.upload_max_files,
+            "upload_max_size_bytes": settings.upload_max_size_bytes,
+            "processing_mode": settings.processing_mode,
         },
     }
 
@@ -87,6 +93,9 @@ def test_health_reports_limited_mode_when_openrouter_is_unreachable(
         },
         "features": {
             "uploads_enabled": False,
+            "upload_max_files": settings.upload_max_files,
+            "upload_max_size_bytes": settings.upload_max_size_bytes,
+            "processing_mode": settings.processing_mode,
         },
         "detail": "Falha ao conectar ao OpenRouter. Verifique rede, DNS e firewall do backend.",
     }
@@ -121,6 +130,9 @@ def test_health_reports_limited_mode_when_queue_is_unreachable(
         },
         "features": {
             "uploads_enabled": False,
+            "upload_max_files": settings.upload_max_files,
+            "upload_max_size_bytes": settings.upload_max_size_bytes,
+            "processing_mode": settings.processing_mode,
         },
         "detail": "Falha ao conectar ao Redis. Verifique a fila de processamento e o worker.",
     }

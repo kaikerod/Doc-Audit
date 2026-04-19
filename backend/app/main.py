@@ -109,6 +109,15 @@ def liveness_check() -> dict[str, str]:
     return {"status": "alive", "app": settings.app_name}
 
 
+def _build_health_features(*, uploads_enabled: bool) -> dict[str, object]:
+    return {
+        "uploads_enabled": uploads_enabled,
+        "upload_max_files": settings.upload_max_files,
+        "upload_max_size_bytes": settings.upload_max_size_bytes,
+        "processing_mode": settings.processing_mode,
+    }
+
+
 @app.get(f"{settings.api_v1_prefix}/health", tags=["health"])
 def readiness_check() -> JSONResponse:
     ai_status, uploads_enabled, ai_detail = build_ai_health_check()
@@ -135,9 +144,7 @@ def readiness_check() -> JSONResponse:
                     "ai": ai_status,
                     "queue": queue_status,
                 },
-                "features": {
-                    "uploads_enabled": False,
-                },
+                "features": _build_health_features(uploads_enabled=False),
                 "detail": " ".join(detail_parts),
             },
         )
@@ -152,9 +159,7 @@ def readiness_check() -> JSONResponse:
             "ai": ai_status,
             "queue": queue_status,
         },
-        "features": {
-            "uploads_enabled": uploads_enabled,
-        },
+        "features": _build_health_features(uploads_enabled=uploads_enabled),
     }
 
     detail_parts = [detail for detail in (ai_detail, queue_detail) if detail]

@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: docaudit-api
+    env_file:
+      - .env
+    environment:
+      DOC_AUDIT_PROCESSING_MODE: ${DOC_AUDIT_PROCESSING_MODE:-queue}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/storage/uploads}
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/app/storage/uploads
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: docaudit-worker
+    command: celery -A backend.app.workers.tasks.celery_app worker --loglevel=info --pool=prefork --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+    env_file:
+      - .env
+    environment:
+      DOC_AUDIT_PROCESSING_MODE: ${DOC_AUDIT_PROCESSING_MODE:-queue}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/app/storage/uploads}
+    volumes:
+      - uploads_data:/app/storage/uploads
+    restart: unless-stopped
+
+volumes:
+  uploads_data:

@@ -12,6 +12,7 @@ def test_root_serves_frontend_dashboard() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "DocAudit" in response.text
+    assert 'name="docaudit-api-base-url"' in response.text
     assert 'href="favicon.svg"' in response.text
     assert 'src="js/app.js?v=2"' in response.text
 

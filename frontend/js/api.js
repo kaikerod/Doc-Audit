@@ -100,18 +100,21 @@
     return response.json();
   }
 
-  async function uploadFiles(files) {
-    const healthPayload = await fetchApiHealth();
-    const uploadsEnabled = !healthPayload.features || healthPayload.features.uploads_enabled !== false;
+  function resolveUploadBatchSize(healthPayload, fallbackBatchSize) {
+    const configuredBatchSize = Number(
+      healthPayload &&
+      healthPayload.features &&
+      healthPayload.features.upload_max_files
+    );
 
-    if (!uploadsEnabled) {
-      const detail =
-        healthPayload && typeof healthPayload.detail === "string" && healthPayload.detail.trim()
-          ? healthPayload.detail.trim()
-          : "Uploads indispon\u00edveis no momento.";
-      throw new Error(detail);
+    if (!Number.isFinite(configuredBatchSize) || configuredBatchSize < 1) {
+      return Math.max(1, Number(fallbackBatchSize) || 1);
     }
 
+    return Math.max(1, Math.floor(configuredBatchSize));
+  }
+
+  async function uploadBatch(files) {
     const formData = new FormData();
     files.forEach(function (file) {
       formData.append("files", file);
@@ -128,6 +131,68 @@
     }
 
     return response.json();
+  }
+
+  async function uploadFiles(files) {
+    const safeFiles = Array.from(files || []);
+    if (!safeFiles.length) {
+      return {
+        items: []
+      };
+    }
+
+    const healthPayload = await fetchApiHealth();
+    const uploadsEnabled = !healthPayload.features || healthPayload.features.uploads_enabled !== false;
+
+    if (!uploadsEnabled) {
+      const detail =
+        healthPayload && typeof healthPayload.detail === "string" && healthPayload.detail.trim()
+          ? healthPayload.detail.trim()
+          : "Uploads indispon\u00edveis no momento.";
+      throw new Error(detail);
+    }
+
+    const batchSize = resolveUploadBatchSize(healthPayload, safeFiles.length);
+    const uploadedItems = [];
+    var completedFileCount = 0;
+    var failedBatchIndex = -1;
+    var totalBatches = Math.ceil(safeFiles.length / batchSize);
+
+    try {
+      for (var startIndex = 0; startIndex < safeFiles.length; startIndex += batchSize) {
+        const nextBatch = safeFiles.slice(startIndex, startIndex + batchSize);
+        failedBatchIndex += 1;
+        const payload = await uploadBatch(nextBatch);
+
+        if (payload && Array.isArray(payload.items)) {
+          uploadedItems.push.apply(uploadedItems, payload.items);
+        }
+
+        completedFileCount += nextBatch.length;
+      }
+    } catch (error) {
+      if (!completedFileCount) {
+        throw error;
+      }
+
+      const partialError = new Error(
+        "Parte do envio foi concluida antes da falha no lote " +
+          String(failedBatchIndex + 1) +
+          " de " +
+          String(totalBatches) +
+          ". " +
+          error.message
+      );
+      partialError.partialPayload = {
+        items: uploadedItems
+      };
+      partialError.completedFileCount = completedFileCount;
+      throw partialError;
+    }
+
+    return {
+      items: uploadedItems
+    };
   }
 
   async function fetchDocuments() {

@@ -67,6 +67,7 @@ POSTGRES_URL=postgresql://...
 ```
 
 `UPLOAD_MAX_FILES=5` e uma recomendacao pratica para evitar requests longas demais no modo sincrono.
+O frontend web divide selecoes maiores em varias requisicoes sequenciais, respeitando esse limite por request.
 
 ## Comandos de deploy
 

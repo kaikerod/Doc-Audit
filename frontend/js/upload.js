@@ -185,6 +185,12 @@
         );
         fileInput.value = "";
       } catch (error) {
+        if (error && error.partialPayload) {
+          acceptedFiles = baseFiles.concat(selection.addedFiles.slice(0, error.completedFileCount || 0));
+          if (typeof onUploadSuccess === "function") {
+            await onUploadSuccess(error.partialPayload);
+          }
+        }
         setFeedback(feedbackNode, error.message, "error");
         fileInput.value = "";
       }

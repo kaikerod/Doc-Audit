@@ -80,4 +80,66 @@ describe("DocAudit API", () => {
     expect(global.fetch.mock.calls[1][0]).toBe("http://127.0.0.1:8000/api/v1/uploads");
     expect(global.fetch.mock.calls[1][1].method).toBe("POST");
   });
+
+  test("uploadFiles divide a selecao em multiplos POSTs quando o health informa limite menor", async () => {
+    const files = [
+      { name: "nota-1.txt", size: 10 },
+      { name: "nota-2.txt", size: 10 },
+      { name: "nota-3.txt", size: 10 },
+      { name: "nota-4.txt", size: 10 },
+      { name: "nota-5.txt", size: 10 }
+    ];
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          features: {
+            uploads_enabled: true,
+            upload_max_files: 2
+          }
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: "upload-1" }, { id: "upload-2" }]
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: "upload-3" }, { id: "upload-4" }]
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: "upload-5" }]
+        })
+      });
+
+    await expect(global.DocAuditApi.uploadFiles(files)).resolves.toEqual({
+      items: [
+        { id: "upload-1" },
+        { id: "upload-2" },
+        { id: "upload-3" },
+        { id: "upload-4" },
+        { id: "upload-5" }
+      ]
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(global.fetch.mock.calls[1][1].body.entries.map((entry) => entry[1].name)).toEqual([
+      "nota-1.txt",
+      "nota-2.txt"
+    ]);
+    expect(global.fetch.mock.calls[2][1].body.entries.map((entry) => entry[1].name)).toEqual([
+      "nota-3.txt",
+      "nota-4.txt"
+    ]);
+    expect(global.fetch.mock.calls[3][1].body.entries.map((entry) => entry[1].name)).toEqual([
+      "nota-5.txt"
+    ]);
+  });
 });
