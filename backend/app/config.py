@@ -9,6 +9,12 @@ from sqlalchemy.engine.url import make_url
 DOCKER_DATABASE_HOST = "db"
 HOST_DATABASE_HOST = "127.0.0.1"
 DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+VERCEL_DATABASE_URL_ENV_NAMES = (
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "POSTGRES_PRISMA_URL",
+)
 
 
 def _strip_env_value(raw_value: str) -> str:
@@ -118,6 +124,12 @@ def _resolve_processing_mode() -> str:
 _load_dotenv_file()
 
 
+def _normalize_postgres_driver(parsed_url):
+    if parsed_url.drivername in {"postgres", "postgresql"}:
+        return parsed_url.set(drivername="postgresql+psycopg")
+    return parsed_url
+
+
 def _normalize_database_url(database_url: str) -> str:
     normalized_url = database_url.strip()
     if not normalized_url or _is_running_in_container():
@@ -128,8 +140,10 @@ def _normalize_database_url(database_url: str) -> str:
     except Exception:
         return normalized_url
 
+    parsed_url = _normalize_postgres_driver(parsed_url)
+
     if parsed_url.host != DOCKER_DATABASE_HOST:
-        return normalized_url
+        return parsed_url.render_as_string(hide_password=False)
 
     # The checked-in env template is used by Docker Compose, where `db` is resolvable.
     # When the API starts directly on the host, switch to the published Postgres port.
@@ -137,6 +151,15 @@ def _normalize_database_url(database_url: str) -> str:
 
 
 DEFAULT_DATABASE_URL = _default_database_url()
+
+
+def _resolve_database_url() -> str:
+    for env_name in VERCEL_DATABASE_URL_ENV_NAMES:
+        configured_url = os.getenv(env_name, "")
+        if configured_url.strip():
+            return _normalize_database_url(configured_url)
+
+    return _normalize_database_url(DEFAULT_DATABASE_URL)
 
 
 LEGACY_OPENROUTER_TIMEOUT_SECONDS = _coerce_positive_float(
@@ -198,8 +221,9 @@ class Settings:
     upload_dir: str = os.getenv("UPLOAD_DIR", _default_upload_dir())
     upload_max_size_bytes: int = int(os.getenv("UPLOAD_MAX_SIZE_BYTES", str(5 * 1024 * 1024)))
     upload_max_files: int = int(os.getenv("UPLOAD_MAX_FILES", "250"))
-    # SQLite keeps direct local runs lightweight; Docker overrides this with Postgres.
-    database_url: str = _normalize_database_url(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL))
+    # SQLite keeps direct local runs lightweight. Vercel Postgres integrations can
+    # inject `POSTGRES_URL*`, so accept those without requiring a duplicate `DATABASE_URL`.
+    database_url: str = _resolve_database_url()
     redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model: str = os.getenv("OPENROUTER_MODEL", "mistralai/ministral-3b-2512")

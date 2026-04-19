@@ -16,6 +16,10 @@ from backend.app import config
             "postgresql+psycopg://docaudit:docaudit@127.0.0.1:5432/docaudit",
         ),
         (
+            "postgresql://docaudit:docaudit@db:5432/docaudit",
+            "postgresql+psycopg://docaudit:docaudit@127.0.0.1:5432/docaudit",
+        ),
+        (
             "sqlite+pysqlite:///./docaudit.db",
             "sqlite+pysqlite:///./docaudit.db",
         ),
@@ -44,6 +48,28 @@ def test_normalize_database_url_uses_sqlite_default_when_empty(
     monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
 
     assert config._normalize_database_url("   ") == config.DEFAULT_DATABASE_URL
+
+
+def test_resolve_database_url_prefers_database_url_over_vercel_postgres_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://primary")
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://fallback")
+
+    assert config._resolve_database_url() == "postgresql+psycopg://primary"
+
+
+def test_resolve_database_url_uses_vercel_postgres_url_when_database_url_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://docaudit:docaudit@db:5432/docaudit")
+    monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
+
+    assert (
+        config._resolve_database_url()
+        == "postgresql+psycopg://docaudit:docaudit@127.0.0.1:5432/docaudit"
+    )
 
 
 def test_strip_env_value_removes_wrapping_quotes() -> None:

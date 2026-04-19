@@ -41,20 +41,29 @@ O caminho mais direto na Vercel e usar Neon via Marketplace:
 vercel integration add neon
 ```
 
-Isso simplifica o provisionamento do `DATABASE_URL`.
+Isso simplifica o provisionamento do Postgres e injeta variaveis como `POSTGRES_URL`
+e `POSTGRES_URL_NON_POOLING` no projeto. O backend aceita essas chaves
+automaticamente na Vercel, mesmo sem duplicar manualmente `DATABASE_URL`.
 
 ## Variaveis de ambiente
 
 Configure pelo menos estas variaveis no projeto da Vercel:
 
 ```env
-DATABASE_URL=postgresql+psycopg://...
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_MODEL=mistralai/ministral-3b-2512
 OPENROUTER_REFERER=https://seu-projeto.vercel.app
 OPENROUTER_TITLE=DocAudit
 DOC_AUDIT_PROCESSING_MODE=sync
 UPLOAD_MAX_FILES=5
+```
+
+Se voce nao usar a integracao Neon/Marketplace, defina manualmente uma destas opcoes:
+
+```env
+DATABASE_URL=postgresql+psycopg://...
+# ou
+POSTGRES_URL=postgresql://...
 ```
 
 `UPLOAD_MAX_FILES=5` e uma recomendacao pratica para evitar requests longas demais no modo sincrono.
@@ -81,4 +90,3 @@ vercel --prod
 - `requirements.txt`: dependencias de runtime no root
 - `vercel.json`: configuracao da function Python
 - `.python-version`: pin de Python
-
