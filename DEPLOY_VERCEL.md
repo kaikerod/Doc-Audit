@@ -8,6 +8,7 @@ Este projeto possui um caminho de deploy compativel com a Vercel para o backend 
 - o frontend continua sendo servido pelo proprio FastAPI
 - o processamento de uploads roda de forma assincrona via Celery + Redis
 - o worker Celery precisa rodar fora da Vercel, apontando para o mesmo Redis
+- o conteudo bruto do TXT fica em staging temporario no Redis para o worker conseguir processar o upload fora do filesystem efemero da Vercel
 - o Supabase fornece o Postgres persistente usado pela aplicacao
 - o Redis e obrigatorio para a fila de processamento, cooldown/rate limit e observabilidade compartilhada
 - sem um banco persistente configurado, o deploy falha ao iniciar em vez de cair em SQLite temporario
@@ -28,6 +29,7 @@ DOC_AUDIT_PROCESSING_MODE=queue
 ```
 
 Esse modo e o recomendado para a Vercel. O upload responde rapido, grava o registro e enfileira o processamento no Redis. O worker deve ficar em um processo separado, fora da Vercel.
+Como a Vercel oferece apenas filesystem efemero na function, o backend tambem faz staging temporario do payload do upload no Redis ate a task terminar.
 
 ## Pre-requisitos
 
@@ -82,6 +84,7 @@ OPENROUTER_REFERER=https://seu-projeto.vercel.app
 OPENROUTER_TITLE=DocAudit
 DOC_AUDIT_PROCESSING_MODE=queue
 UPLOAD_MAX_FILES=5
+UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS=86400
 ```
 
 O backend aceita automaticamente `DATABASE_URL`, `POSTGRES_URL`,

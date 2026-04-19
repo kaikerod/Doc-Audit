@@ -116,6 +116,87 @@ def test_process_upload_document_task_fluxo_completo_eager(db_session) -> None:
     }
 
 
+def test_process_upload_document_uses_staged_upload_content_when_local_file_is_missing(
+    db_session,
+) -> None:
+    upload = Upload(
+        nome_arquivo="nf-staged.txt",
+        caminho_arquivo="C:/fake/nf-staged.txt",
+        hash_sha256=sha256(b"conteudo fiscal").hexdigest(),
+        tamanho_bytes=len(b"conteudo fiscal"),
+        status="pendente",
+    )
+    db_session.add(upload)
+    db_session.commit()
+    db_session.refresh(upload)
+    upload_id = upload.id
+
+    extraction_result = DocumentExtractionResult(
+        numero_nf="NF-2026-002",
+        cnpj_emitente="11.222.333/0001-81",
+        cnpj_destinatario="45.723.174/0001-10",
+        data_emissao="2026-04-15",
+        data_pagamento="2026-04-16",
+        valor_total="100.50",
+        aprovador="Maria Silva",
+        descricao="Servico mensal",
+        confiancas={
+            "numero_nf": 0.99,
+            "cnpj_emitente": 0.98,
+            "cnpj_destinatario": 0.97,
+            "data_emissao": 0.96,
+            "data_pagamento": 0.95,
+            "valor_total": 0.94,
+            "aprovador": 0.93,
+            "descricao": 0.92,
+        },
+        extraction_failed_fields=[],
+    )
+
+    original_always_eager = celery_app.conf.task_always_eager
+    original_eager_propagates = celery_app.conf.task_eager_propagates
+    original_broker_url = celery_app.conf.broker_url
+    original_result_backend = celery_app.conf.result_backend
+    celery_app.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=True,
+        broker_url="memory://",
+        result_backend="cache+memory://",
+    )
+
+    with patch("backend.app.workers.tasks.SessionLocal", return_value=db_session), patch(
+        "backend.app.workers.tasks.Path.read_text",
+        side_effect=FileNotFoundError("arquivo indisponivel no worker"),
+    ), patch(
+        "backend.app.workers.tasks.get_staged_upload_content",
+        return_value=b"conteudo fiscal",
+    ) as staged_content_mock, patch(
+        "backend.app.workers.tasks.delete_staged_upload_content"
+    ) as delete_staged_mock, patch(
+        "backend.app.workers.tasks.extract_document_data",
+        return_value=extraction_result,
+    ):
+        result = process_upload_document.delay(str(upload_id))
+
+    celery_app.conf.update(
+        task_always_eager=original_always_eager,
+        task_eager_propagates=original_eager_propagates,
+        broker_url=original_broker_url,
+        result_backend=original_result_backend,
+    )
+
+    documento = db_session.scalar(select(Documento).where(Documento.upload_id == upload_id))
+    upload = db_session.get(Upload, upload_id)
+
+    assert result.successful()
+    assert documento is not None
+    assert documento.numero_nf == "NF-2026-002"
+    assert upload is not None
+    assert upload.status == "concluido"
+    staged_content_mock.assert_called_once_with(upload_id)
+    delete_staged_mock.assert_called_once_with(str(upload_id))
+
+
 def test_process_upload_document_marks_upload_as_error_on_processing_failure(db_session) -> None:
     upload = Upload(
         nome_arquivo="nf-falha.txt",

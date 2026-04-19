@@ -21,6 +21,7 @@ from ..observability import elapsed_ms, log_observability_event, timestamp_diff_
 from ..services.anomalia_service import DetectedAnomaly
 from ..services.audit_service import log_audit_event
 from ..services.document_processing_service import (
+    decode_txt_content,
     detect_document_anomalies,
     populate_documento_from_extraction,
 )
@@ -28,6 +29,10 @@ from ..services.ia_service import (
     OpenRouterTimeoutError,
     OpenRouterUpstreamError,
     extract_document_data,
+)
+from ..services.upload_queue_payload_service import (
+    delete_staged_upload_content,
+    get_staged_upload_content,
 )
 
 celery_app = Celery("docaudit", broker=settings.redis_url, backend=settings.redis_url)
@@ -101,6 +106,20 @@ def _prepare_upload_processing(db: DbSession, upload_id: UUID) -> UploadProcessi
         upload_id=upload.id,
         file_path=Path(upload.caminho_arquivo),
     )
+
+
+def _read_upload_content(processing_snapshot: UploadProcessingSnapshot) -> str:
+    try:
+        return processing_snapshot.file_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        staged_content = get_staged_upload_content(processing_snapshot.upload_id)
+        if staged_content is None:
+            raise RuntimeError(
+                "Conteudo do upload nao esta disponivel no filesystem local do worker "
+                "nem no staging temporario do Redis."
+            ) from exc
+
+        return decode_txt_content(staged_content)
 
 
 def _persist_processed_document(
@@ -248,7 +267,7 @@ def process_upload_document_pipeline(
     finally:
         db.close()
 
-    conteudo_bruto = processing_snapshot.file_path.read_text(encoding="utf-8")
+    conteudo_bruto = _read_upload_content(processing_snapshot)
     extraction = extract_document_data(conteudo_bruto, request_context=request_context)
 
     db = SessionLocal()
@@ -372,6 +391,7 @@ def process_upload_document(
             soft_time_limit_seconds=settings.celery_task_soft_time_limit_seconds,
             time_limit_seconds=settings.celery_task_time_limit_seconds,
         )
+        delete_staged_upload_content(upload_id)
         return str(documento.id)
     except (OpenRouterTimeoutError, OpenRouterUpstreamError) as exc:
         if _should_retry_upload_processing(exc, retry_count):
@@ -439,6 +459,7 @@ def process_upload_document(
             phase_timeout_seconds=getattr(final_exc, "phase_timeout_seconds", None),
             timeout_budget_seconds=getattr(final_exc, "timeout_budget_seconds", None),
         )
+        delete_staged_upload_content(upload_id)
         _mark_upload_processing_error_with_new_session(upload_id, error_message=str(final_exc))
         raise final_exc
     except SoftTimeLimitExceeded as exc:
@@ -464,6 +485,7 @@ def process_upload_document(
             exception_class=exc.__class__.__name__,
             error_message=error_message,
         )
+        delete_staged_upload_content(upload_id)
         _mark_upload_processing_error_with_new_session(upload_id, error_message=error_message)
         raise RuntimeError(error_message) from exc
     except Exception as exc:
@@ -484,5 +506,6 @@ def process_upload_document(
             exception_class=exc.__class__.__name__,
             error_message=str(exc),
         )
+        delete_staged_upload_content(upload_id)
         _mark_upload_processing_error_with_new_session(upload_id, error_message=str(exc))
         raise

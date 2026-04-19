@@ -242,6 +242,8 @@ A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode 
 
 > Na Vercel, `DATABASE_URL` ou um dos env vars do Vercel Postgres são obrigatórios. Sem banco persistente, a inicialização falha para evitar perda de dados.
 
+> Quando `DOC_AUDIT_PROCESSING_MODE=queue` roda na Vercel, o conteudo bruto do upload fica em staging temporario no Redis para que o worker externo nao dependa do filesystem efemero da function.
+
 ### Observabilidade
 | Método | Rota | Descrição |
 |--------|------|-----------|
@@ -307,6 +309,7 @@ Durante o `pytest`, o projeto usa SQLite em memória para isolamento rápido; fo
 | `OPENROUTER_API_KEY` | Chave da API OpenRouter | *(obrigatório)* |
 | `OPENROUTER_MODEL` | Modelo de IA a utilizar | `mistralai/ministral-3b-2512` |
 | `UPLOAD_MAX_FILES` | Quantidade máxima de arquivos `.txt` aceitos por envio | `250` |
+| `UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS` | TTL, em segundos, do staging temporario do upload no Redis | `86400` |
 | `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
 | `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
 | `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |

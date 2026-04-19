@@ -26,6 +26,7 @@ from ..services.document_processing_service import (
     persist_pending_uploads,
 )
 from ..services.queue_service import enqueue_upload_processing
+from ..services.upload_queue_payload_service import delete_staged_upload_content, stage_upload_content
 from ..services.upload_service import UploadNotFoundError, delete_all_uploads, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
@@ -57,6 +58,10 @@ def _validate_upload_content(content: bytes) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Arquivo excede o limite de {settings.upload_max_size_bytes} bytes.",
         )
+
+
+def _should_stage_upload_content_in_redis() -> bool:
+    return settings.is_vercel and settings.processing_mode == "queue"
 
 
 def _extract_txt_files_from_zip(content: bytes) -> list[tuple[str, bytes]]:
@@ -263,6 +268,8 @@ async def create_uploads(
                 raise
 
             try:
+                if _should_stage_upload_content_in_redis():
+                    stage_upload_content(pending_upload.upload.id, content)
                 enqueue_upload_processing(pending_upload.upload.id)
             except Exception as exc:
                 db.rollback()
@@ -279,6 +286,7 @@ async def create_uploads(
                         "erro": f"Falha ao enfileirar processamento: {exc}",
                     },
                 )
+                delete_staged_upload_content(pending_upload.upload.id)
                 db.refresh(pending_upload.upload)
 
             persisted_uploads.append(pending_upload.upload)

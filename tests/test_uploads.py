@@ -67,6 +67,34 @@ def test_upload_txt_valido_returns_200(
     enqueue_mock.assert_called_once_with(saved_upload.id)
 
 
+def test_upload_stages_content_in_redis_for_vercel_queue(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+    monkeypatch.setattr(settings, "is_vercel", True)
+    monkeypatch.setattr(settings, "processing_mode", "queue")
+    monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
+
+    with patch("backend.app.routers.uploads.stage_upload_content") as stage_mock, patch(
+        "backend.app.routers.uploads.enqueue_upload_processing",
+        return_value="task-1",
+    ):
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    saved_upload = db_session.scalar(select(Upload))
+    assert saved_upload is not None
+    stage_mock.assert_called_once_with(saved_upload.id, b"conteudo de teste")
+
+
 def test_upload_marks_error_when_enqueue_fails(
     db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

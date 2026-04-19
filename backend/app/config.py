@@ -250,6 +250,10 @@ class Settings:
     upload_dir: str = os.getenv("UPLOAD_DIR", _default_upload_dir())
     upload_max_size_bytes: int = int(os.getenv("UPLOAD_MAX_SIZE_BYTES", str(5 * 1024 * 1024)))
     upload_max_files: int = int(os.getenv("UPLOAD_MAX_FILES", "250"))
+    upload_queue_payload_ttl_seconds: int = _parse_positive_int_env(
+        "UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS",
+        86400,
+    )
     # Tests use SQLite for fast isolation. Other runs expect Postgres, either from
     # the local Docker defaults or the Vercel Postgres env vars.
     database_url: str = _resolve_database_url()
