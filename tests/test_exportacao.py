@@ -342,3 +342,30 @@ def test_exportacao_excel_usa_modelo_analitico_para_power_bi(db_session) -> None
         assert row["quantidade_anomalias_critica"] == "1"
         assert row["quantidade_anomalias_alta"] == "1"
         assert row["severidade_maxima"] == "CRITICA"
+
+
+def test_exportacao_converte_datetime_sem_timezone_assumindo_utc_para_utc_menos_tres(db_session) -> None:
+    _seed_export_data(
+        db_session,
+        extra_anomalias=[
+            {
+                "codigo": "HORA_LOCAL",
+                "descricao": "Timestamp UTC sem timezone.",
+                "severidade": "MEDIA",
+                "criado_em": datetime(2026, 4, 15, 9, 30),
+            }
+        ],
+    )
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/exportar/csv")
+    finally:
+        app.dependency_overrides.clear()
+
+    rows = _read_csv_rows(response.content)
+    local_row = next(row for row in rows if row["anomalia_codigo"] == "HORA_LOCAL")
+
+    assert response.status_code == 200
+    assert local_row["anomalia_detectada_em"] == "15/04/2026 06:30:00"

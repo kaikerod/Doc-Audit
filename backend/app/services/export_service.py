@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO, StringIO
 import json
@@ -10,7 +10,6 @@ from typing import Any
 from uuid import UUID
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
-from zoneinfo import ZoneInfo
 
 try:
     from openpyxl import Workbook
@@ -102,7 +101,7 @@ AUDIT_LOG_EXPORT_COLUMNS = (
 )
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F2937") if PatternFill else None
-BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
+UTC_MINUS_THREE = timezone(timedelta(hours=-3))
 BRAZILIAN_DATE_FORMAT = "%d/%m/%Y"
 BRAZILIAN_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
 SEVERITY_ORDER = {
@@ -142,8 +141,9 @@ def _to_brasilia_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
 
+    # SQLite commonly returns naive timestamps even when the source value was UTC.
     resolved_value = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    return resolved_value.astimezone(BRASILIA_TZ)
+    return resolved_value.astimezone(UTC_MINUS_THREE)
 
 
 def _build_date_dimensions(prefix: str, value: date | None) -> dict[str, int | str | None]:
