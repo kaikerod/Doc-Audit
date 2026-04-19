@@ -997,6 +997,7 @@ select:focus-visible,
 }
 
 .table-panel {
+  min-width: 0;
   background:
     radial-gradient(circle at top left, rgba(28, 103, 89, 0.08), transparent 22%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 247, 236, 0.62)),
@@ -1442,6 +1443,28 @@ select:focus-visible,
 
 .empty-state:not([hidden]) {
   display: grid;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(24, 32, 34, 0.08);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.pagination__info {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pagination__actions {
+  display: flex;
+  gap: 8px;
 }
 
 .detail-panel {

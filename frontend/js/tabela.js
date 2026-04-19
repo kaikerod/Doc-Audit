@@ -135,6 +135,7 @@
       layout: options.dashboardGrid,
       stats: options.stats,
       clearAllCluster: options.clearAllCluster,
+      paginationContainer: options.paginationContainer,
       detailPanel: {
         panel: options.detailPanel,
         title: options.detailTitle,
@@ -144,6 +145,8 @@
         layout: options.dashboardGrid
       }
     };
+
+    var ITEMS_PER_PAGE = 10;
 
     function getVisibleDocuments() {
       return root.DocAuditUiLogic.filterDocuments(state.documents, {
@@ -171,7 +174,16 @@
       updateClearAllVisibility();
 
       elements.emptyState.hidden = visibleDocuments.length !== 0;
-      elements.body.innerHTML = visibleDocuments
+
+      var totalPages = Math.max(1, Math.ceil(visibleDocuments.length / ITEMS_PER_PAGE));
+      if (!state.currentPage || state.currentPage > totalPages) {
+        state.currentPage = 1;
+      }
+      
+      var startIndex = (state.currentPage - 1) * ITEMS_PER_PAGE;
+      var paginatedDocuments = visibleDocuments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+      elements.body.innerHTML = paginatedDocuments
         .map(function (document) {
           var statusMeta = root.DocAuditUiLogic.getStatusMeta(document.status, document.flags);
           var isSelected = document.id === state.selectedDocumentId;
@@ -217,8 +229,28 @@
         })
         .join("");
 
-      if (!visibleDocuments.length) {
+      if (!paginatedDocuments.length) {
         elements.body.innerHTML = "";
+      }
+
+      if (elements.paginationContainer) {
+        if (visibleDocuments.length <= ITEMS_PER_PAGE) {
+          elements.paginationContainer.innerHTML = "";
+          elements.paginationContainer.hidden = true;
+        } else {
+          var prevDisabled = state.currentPage <= 1 ? "disabled" : "";
+          var nextDisabled = state.currentPage >= totalPages ? "disabled" : "";
+          
+          elements.paginationContainer.innerHTML = 
+            '<div class="pagination">' +
+              '<span class="pagination__info">P\u00e1gina ' + state.currentPage + ' de ' + totalPages + ' (' + visibleDocuments.length + ' notas)</span>' +
+              '<div class="pagination__actions">' +
+                '<button type="button" class="button button--ghost" data-page="' + (state.currentPage - 1) + '" ' + prevDisabled + '>Anterior</button>' +
+                '<button type="button" class="button button--ghost" data-page="' + (state.currentPage + 1) + '" ' + nextDisabled + '>Pr\u00f3xima</button>' +
+              '</div>' +
+            '</div>';
+          elements.paginationContainer.hidden = false;
+        }
       }
 
       var selectedDocument = state.documents.find(function (document) {
@@ -299,8 +331,14 @@
 
     function bindEvents() {
       [elements.searchInput, elements.statusFilter, elements.severityFilter].forEach(function (element) {
-        element.addEventListener("input", render);
-        element.addEventListener("change", render);
+        element.addEventListener("input", function() {
+          state.currentPage = 1;
+          render();
+        });
+        element.addEventListener("change", function() {
+          state.currentPage = 1;
+          render();
+        });
       });
 
       elements.body.addEventListener("click", function (event) {
@@ -340,6 +378,19 @@
       if (elements.detailPanel.deleteButton) {
         elements.detailPanel.deleteButton.addEventListener("click", function () {
           triggerDelete(this.dataset.uploadId);
+        });
+      }
+
+      if (elements.paginationContainer) {
+        elements.paginationContainer.addEventListener("click", function(event) {
+          var btn = event.target.closest("button[data-page]");
+          if (btn && !btn.disabled) {
+            state.currentPage = parseInt(btn.dataset.page, 10);
+            render();
+            if (elements.layout) {
+              elements.layout.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }
         });
       }
     }

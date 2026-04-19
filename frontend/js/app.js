@@ -80,6 +80,7 @@
       searchInput: document.getElementById("document-search-input"),
       statusFilter: document.getElementById("document-status-filter"),
       severityFilter: document.getElementById("document-severity-filter"),
+      paginationContainer: document.getElementById("pagination-container"),
       detailPanel: document.getElementById("detail-panel"),
       detailTitle: document.getElementById("detail-title"),
       detailDeleteButton: document.getElementById("detail-delete-button"),
