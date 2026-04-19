@@ -164,7 +164,7 @@
 
     function render() {
       var visibleDocuments = getVisibleDocuments();
-      var stats = root.DocAuditUiLogic.buildDashboardStats(state.documents);
+      var stats = root.DocAuditUiLogic.buildDashboardStats(visibleDocuments);
 
       elements.stats.total.textContent = stats.total;
       elements.stats.withFlags.textContent = stats.withFlags;
