@@ -62,10 +62,10 @@ DOCUMENT_EXPORT_COLUMNS = (
     ExportColumn("descricao", "Descricao", 40),
     ExportColumn("status", "Status", 16),
     ExportColumn("resumo", "Resumo", 44),
-    ExportColumn("flag_codigo", "Flag Codigo", 18),
-    ExportColumn("flag_descricao", "Flag Descricao", 42),
-    ExportColumn("flag_severidade", "Flag Severidade", 16),
-    ExportColumn("flag_detectada_em", "Flag Detectada Em", 24),
+    ExportColumn("flag_codigo", "Flag Codigo", 30),
+    ExportColumn("flag_descricao", "Flag Descricao", 72),
+    ExportColumn("flag_severidade", "Flag Severidade", 24),
+    ExportColumn("flag_detectada_em", "Flag Detectada Em", 48),
 )
 
 AUDIT_LOG_EXPORT_COLUMNS = (
@@ -81,6 +81,11 @@ AUDIT_LOG_EXPORT_COLUMNS = (
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F2937") if PatternFill else None
 GMT_PLUS_THREE = timezone(timedelta(hours=3))
+SEVERITY_ORDER = {
+    "CRITICA": 3,
+    "ALTA": 2,
+    "MEDIA": 1,
+}
 SEVERITY_FILLS = (
     {
         "CRITICA": PatternFill(fill_type="solid", fgColor="FECACA"),
@@ -115,6 +120,43 @@ def _format_flag_detected_at(value: datetime | None) -> str | None:
 
     resolved_value = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     return resolved_value.astimezone(GMT_PLUS_THREE).isoformat(sep=" ", timespec="seconds")
+
+
+def _join_export_values(values: list[str | None]) -> str | None:
+    normalized_values = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+    if not normalized_values:
+        return None
+    return " | ".join(normalized_values)
+
+
+def _build_flag_export_fields(anomalias: list[Any]) -> dict[str, str | None]:
+    if not anomalias:
+        return {
+            "flag_codigo": None,
+            "flag_descricao": None,
+            "flag_severidade": None,
+            "flag_detectada_em": None,
+        }
+
+    return {
+        "flag_codigo": _join_export_values([anomalia.codigo for anomalia in anomalias]),
+        "flag_descricao": _join_export_values([anomalia.descricao for anomalia in anomalias]),
+        "flag_severidade": _join_export_values([anomalia.severidade for anomalia in anomalias]),
+        "flag_detectada_em": _join_export_values(
+            [_format_flag_detected_at(anomalia.criado_em) for anomalia in anomalias]
+        ),
+    }
+
+
+def _resolve_export_severity(value: Any) -> str:
+    severities = [
+        item.strip().upper()
+        for item in str(value or "").split("|")
+        if item.strip()
+    ]
+    if not severities:
+        return ""
+    return max(severities, key=lambda item: SEVERITY_ORDER.get(item, 0))
 
 
 def _serialize_value(value: Any) -> str:
@@ -163,10 +205,7 @@ def _build_document_export_rows(
                     "descricao": None,
                     "status": upload.status,
                     "resumo": _build_summary(upload.status, 0),
-                    "flag_codigo": None,
-                    "flag_descricao": None,
-                    "flag_severidade": None,
-                    "flag_detectada_em": None,
+                    **_build_flag_export_fields([]),
                 }
             )
             continue
@@ -191,28 +230,12 @@ def _build_document_export_rows(
             "resumo": _build_summary(documento.status_extracao, len(anomalias)),
         }
 
-        if not anomalias:
-            rows.append(
-                {
-                    **base_row,
-                    "flag_codigo": None,
-                    "flag_descricao": None,
-                    "flag_severidade": None,
-                    "flag_detectada_em": None,
-                }
-            )
-            continue
-
-        for anomalia in anomalias:
-            rows.append(
-                {
-                    **base_row,
-                    "flag_codigo": anomalia.codigo,
-                    "flag_descricao": anomalia.descricao,
-                    "flag_severidade": anomalia.severidade,
-                    "flag_detectada_em": _format_flag_detected_at(anomalia.criado_em),
-                }
-            )
+        rows.append(
+            {
+                **base_row,
+                **_build_flag_export_fields(anomalias),
+            }
+        )
 
     return rows
 
@@ -271,7 +294,7 @@ def generate_excel_bytes(sheets: tuple[ExportSheet, ...]) -> bytes:
                 continue
 
             severity_cell = worksheet.cell(row=worksheet.max_row, column=severity_column_index)
-            severity_value = str(severity_cell.value or "").upper()
+            severity_value = _resolve_export_severity(severity_cell.value)
             fill = SEVERITY_FILLS.get(severity_value)
             if fill is not None:
                 severity_cell.fill = fill
@@ -475,7 +498,7 @@ def _build_worksheet_xml(sheet: ExportSheet) -> str:
         for column_index, column in enumerate(sheet.columns, start=1):
             style_id = 0
             if severity_column_index == column_index:
-                severity_value = str(row.get(column.key) or "").upper()
+                severity_value = _resolve_export_severity(row.get(column.key))
                 style_id = {
                     "CRITICA": 2,
                     "ALTA": 3,

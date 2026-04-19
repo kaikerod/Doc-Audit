@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import csv
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
+from io import StringIO
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -18,7 +20,7 @@ from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
 
 
-def _seed_export_data(db_session) -> None:
+def _seed_export_data(db_session, extra_anomalias: list[dict[str, object]] | None = None) -> None:
     upload = Upload(
         nome_arquivo="nf-exportacao.txt",
         caminho_arquivo="C:/tmp/nf-exportacao.txt",
@@ -55,6 +57,16 @@ def _seed_export_data(db_session) -> None:
             criado_em=datetime(2026, 4, 15, 9, 30, tzinfo=timezone.utc),
         )
     )
+    for anomalia in extra_anomalias or []:
+        db_session.add(
+            Anomalia(
+                documento_id=documento.id,
+                codigo=str(anomalia["codigo"]),
+                descricao=str(anomalia["descricao"]),
+                severidade=str(anomalia["severidade"]),
+                criado_em=anomalia["criado_em"],
+            )
+        )
     db_session.add(
         AuditLog(
             id=uuid4(),
@@ -76,6 +88,11 @@ def _read_xlsx_xml_files(content: bytes) -> str:
             for name in archive.namelist()
             if name.endswith(".xml")
         )
+
+
+def _read_csv_rows(content: bytes) -> list[dict[str, str]]:
+    reader = csv.DictReader(StringIO(content.decode("utf-8-sig")), delimiter=";")
+    return list(reader)
 
 
 @pytest.mark.parametrize(
@@ -181,3 +198,68 @@ def test_exportacao_documentos_formata_flag_detectada_em_em_gmt_mais_tres(
 
     assert response.status_code == 200
     assert expected_timestamp in exported_content
+
+
+def test_exportacao_csv_consolida_multiplas_flags_no_mesmo_registro(db_session) -> None:
+    _seed_export_data(
+        db_session,
+        extra_anomalias=[
+            {
+                "codigo": "DATA_EMISSAO_INV",
+                "descricao": "Data de emissao posterior ao pagamento.",
+                "severidade": "CRITICA",
+                "criado_em": datetime(2026, 4, 15, 11, 0, tzinfo=timezone.utc),
+            }
+        ],
+    )
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/exportar/csv")
+    finally:
+        app.dependency_overrides.clear()
+
+    rows = _read_csv_rows(response.content)
+
+    assert response.status_code == 200
+    assert len(rows) == 1
+    assert rows[0]["Flag Codigo"] == "APROVADOR_NOK | DATA_EMISSAO_INV"
+    assert (
+        rows[0]["Flag Descricao"]
+        == "Aprovador nao consta na lista autorizada. | Data de emissao posterior ao pagamento."
+    )
+    assert rows[0]["Flag Severidade"] == "ALTA | CRITICA"
+    assert rows[0]["Flag Detectada Em"] == "2026-04-15 12:30:00+03:00 | 2026-04-15 14:00:00+03:00"
+
+
+def test_exportacao_excel_consolida_multiplas_flags_no_mesmo_registro(db_session) -> None:
+    _seed_export_data(
+        db_session,
+        extra_anomalias=[
+            {
+                "codigo": "DATA_EMISSAO_INV",
+                "descricao": "Data de emissao posterior ao pagamento.",
+                "severidade": "CRITICA",
+                "criado_em": datetime(2026, 4, 15, 11, 0, tzinfo=timezone.utc),
+            }
+        ],
+    )
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/exportar/excel")
+    finally:
+        app.dependency_overrides.clear()
+
+    workbook_xml = _read_xlsx_xml_files(response.content)
+
+    assert response.status_code == 200
+    assert "APROVADOR_NOK | DATA_EMISSAO_INV" in workbook_xml
+    assert (
+        "Aprovador nao consta na lista autorizada. | Data de emissao posterior ao pagamento."
+        in workbook_xml
+    )
+    assert "ALTA | CRITICA" in workbook_xml
+    assert "2026-04-15 12:30:00+03:00 | 2026-04-15 14:00:00+03:00" in workbook_xml
