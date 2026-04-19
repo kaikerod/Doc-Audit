@@ -6,6 +6,7 @@ from decimal import Decimal
 from io import BytesIO
 from io import StringIO
 from uuid import uuid4
+import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
 import pytest
@@ -18,6 +19,10 @@ from backend.app.models.anomalia import Anomalia
 from backend.app.models.audit_log import AuditLog
 from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
+
+XLSX_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+XLSX_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+XLSX_DOC_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
 def _seed_export_data(db_session, extra_anomalias: list[dict[str, object]] | None = None) -> None:
@@ -81,13 +86,48 @@ def _seed_export_data(db_session, extra_anomalias: list[dict[str, object]] | Non
     db_session.commit()
 
 
-def _read_xlsx_xml_files(content: bytes) -> str:
+def _read_xlsx_rows(content: bytes, sheet_name: str) -> list[dict[str, str]]:
     with ZipFile(BytesIO(content)) as archive:
-        return "\n".join(
-            archive.read(name).decode("utf-8")
-            for name in archive.namelist()
-            if name.endswith(".xml")
-        )
+        workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+        relationships_root = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        relationships = {
+            relation.attrib["Id"]: relation.attrib["Target"]
+            for relation in relationships_root.findall(f"{{{XLSX_REL_NS}}}Relationship")
+        }
+        worksheet_target = None
+        for sheet in workbook_root.findall(f".//{{{XLSX_MAIN_NS}}}sheet"):
+            if sheet.attrib.get("name") != sheet_name:
+                continue
+            relation_id = sheet.attrib.get(f"{{{XLSX_DOC_REL_NS}}}id")
+            worksheet_target = relationships.get(relation_id)
+            break
+
+        if worksheet_target is None:
+            raise KeyError(f"Aba XLSX nao encontrada: {sheet_name}")
+
+        worksheet_root = ET.fromstring(archive.read(f"xl/{worksheet_target}"))
+        sheet_rows = []
+        for row in worksheet_root.findall(f".//{{{XLSX_MAIN_NS}}}sheetData/{{{XLSX_MAIN_NS}}}row"):
+            values = []
+            for cell in row.findall(f"{{{XLSX_MAIN_NS}}}c"):
+                text_node = cell.find(f"{{{XLSX_MAIN_NS}}}is/{{{XLSX_MAIN_NS}}}t")
+                values.append(text_node.text if text_node is not None and text_node.text is not None else "")
+            sheet_rows.append(values)
+
+    headers = [str(value) if value is not None else "" for value in sheet_rows[0]]
+    return [
+        {
+            header: "" if row[index] is None else str(row[index])
+            for index, header in enumerate(headers)
+        }
+        for row in sheet_rows[1:]
+    ]
+
+
+def _read_xlsx_sheet_names(content: bytes) -> list[str]:
+    with ZipFile(BytesIO(content)) as archive:
+        workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+    return [sheet.attrib["name"] for sheet in workbook_root.findall(f".//{{{XLSX_MAIN_NS}}}sheet")]
 
 
 def _read_csv_rows(content: bytes) -> list[dict[str, str]]:
@@ -164,22 +204,24 @@ def test_exportacao_excel_inclui_snapshot_do_log_de_auditoria(db_session) -> Non
     finally:
         app.dependency_overrides.clear()
 
-    workbook_xml = _read_xlsx_xml_files(response.content)
+    sheet_names = _read_xlsx_sheet_names(response.content)
+    log_rows = _read_xlsx_rows(response.content, "Log Auditoria")
 
     assert response.status_code == 200
-    assert "Log Auditoria" in workbook_xml
-    assert "upload_realizado" in workbook_xml
-    assert "qa@test.local" in workbook_xml
+    assert "Log Auditoria" in sheet_names
+    assert len(log_rows) == 1
+    assert log_rows[0]["evento"] == "upload_realizado"
+    assert log_rows[0]["usuario"] == "qa@test.local"
 
 
 @pytest.mark.parametrize(
     ("path", "expected_timestamp"),
     [
-        ("/api/v1/exportar/csv", "2026-04-15 12:30:00+03:00"),
-        ("/api/v1/exportar/excel", "2026-04-15 12:30:00+03:00"),
+        ("/api/v1/exportar/csv", "15/04/2026 06:30:00"),
+        ("/api/v1/exportar/excel", "15/04/2026 06:30:00"),
     ],
 )
-def test_exportacao_documentos_formata_flag_detectada_em_em_gmt_mais_tres(
+def test_exportacao_documentos_formata_data_hora_em_brasilia(
     db_session, path: str, expected_timestamp: str
 ) -> None:
     _seed_export_data(db_session)
@@ -192,15 +234,15 @@ def test_exportacao_documentos_formata_flag_detectada_em_em_gmt_mais_tres(
         app.dependency_overrides.clear()
 
     if path.endswith("/csv"):
-        exported_content = response.content.decode("utf-8-sig")
+        exported_content = _read_csv_rows(response.content)[0]["anomalia_detectada_em"]
     else:
-        exported_content = _read_xlsx_xml_files(response.content)
+        exported_content = _read_xlsx_rows(response.content, "Documentos")[0]["anomalia_detectada_em"]
 
     assert response.status_code == 200
-    assert expected_timestamp in exported_content
+    assert exported_content == expected_timestamp
 
 
-def test_exportacao_csv_consolida_multiplas_flags_no_mesmo_registro(db_session) -> None:
+def test_exportacao_csv_usa_modelo_analitico_para_power_bi(db_session) -> None:
     _seed_export_data(
         db_session,
         extra_anomalias=[
@@ -223,17 +265,44 @@ def test_exportacao_csv_consolida_multiplas_flags_no_mesmo_registro(db_session) 
     rows = _read_csv_rows(response.content)
 
     assert response.status_code == 200
-    assert len(rows) == 1
-    assert rows[0]["Flag Codigo"] == "APROVADOR_NOK | DATA_EMISSAO_INV"
-    assert (
-        rows[0]["Flag Descricao"]
-        == "Aprovador nao consta na lista autorizada. | Data de emissao posterior ao pagamento."
-    )
-    assert rows[0]["Flag Severidade"] == "ALTA | CRITICA"
-    assert rows[0]["Flag Detectada Em"] == "2026-04-15 12:30:00+03:00 | 2026-04-15 14:00:00+03:00"
+    assert len(rows) == 2
+    assert list(rows[0].keys())[:10] == [
+        "upload_id",
+        "upload_criado_em",
+        "upload_status",
+        "nome_arquivo",
+        "tamanho_bytes",
+        "documento_id",
+        "documento_criado_em",
+        "possui_documento",
+        "documento_status",
+        "tipo_registro",
+    ]
+    assert {row["anomalia_codigo"] for row in rows} == {
+        "APROVADOR_NOK",
+        "DATA_EMISSAO_INV",
+    }
+    assert {row["anomalia_severidade"] for row in rows} == {"ALTA", "CRITICA"}
+    assert {row["anomalia_detectada_em"] for row in rows} == {
+        "15/04/2026 06:30:00",
+        "15/04/2026 08:00:00",
+    }
+    for row in rows:
+        assert row["tipo_registro"] == "documento_com_anomalia"
+        assert row["data_emissao"] == "15/04/2026"
+        assert row["data_pagamento"] == "16/04/2026"
+        assert row["emissao_competencia"] == "2026-04"
+        assert row["pagamento_competencia"] == "2026-04"
+        assert row["possui_documento"] == "1"
+        assert row["possui_anomalia"] == "1"
+        assert row["quantidade_anomalias"] == "2"
+        assert row["quantidade_anomalias_critica"] == "1"
+        assert row["quantidade_anomalias_alta"] == "1"
+        assert row["quantidade_anomalias_media"] == "0"
+        assert row["severidade_maxima"] == "CRITICA"
 
 
-def test_exportacao_excel_consolida_multiplas_flags_no_mesmo_registro(db_session) -> None:
+def test_exportacao_excel_usa_modelo_analitico_para_power_bi(db_session) -> None:
     _seed_export_data(
         db_session,
         extra_anomalias=[
@@ -253,13 +322,23 @@ def test_exportacao_excel_consolida_multiplas_flags_no_mesmo_registro(db_session
     finally:
         app.dependency_overrides.clear()
 
-    workbook_xml = _read_xlsx_xml_files(response.content)
+    rows = _read_xlsx_rows(response.content, "Documentos")
 
     assert response.status_code == 200
-    assert "APROVADOR_NOK | DATA_EMISSAO_INV" in workbook_xml
-    assert (
-        "Aprovador nao consta na lista autorizada. | Data de emissao posterior ao pagamento."
-        in workbook_xml
-    )
-    assert "ALTA | CRITICA" in workbook_xml
-    assert "2026-04-15 12:30:00+03:00 | 2026-04-15 14:00:00+03:00" in workbook_xml
+    assert len(rows) == 2
+    assert {row["anomalia_codigo"] for row in rows} == {
+        "APROVADOR_NOK",
+        "DATA_EMISSAO_INV",
+    }
+    assert {row["anomalia_detectada_em"] for row in rows} == {
+        "15/04/2026 06:30:00",
+        "15/04/2026 08:00:00",
+    }
+    for row in rows:
+        assert row["tipo_registro"] == "documento_com_anomalia"
+        assert row["documento_status"] == "concluido"
+        assert row["possui_anomalia"] == "1"
+        assert row["quantidade_anomalias"] == "2"
+        assert row["quantidade_anomalias_critica"] == "1"
+        assert row["quantidade_anomalias_alta"] == "1"
+        assert row["severidade_maxima"] == "CRITICA"

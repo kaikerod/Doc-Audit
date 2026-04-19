@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
 import json
@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
+from zoneinfo import ZoneInfo
 
 try:
     from openpyxl import Workbook
@@ -49,38 +50,61 @@ class GeneratedExport:
 
 
 DOCUMENT_EXPORT_COLUMNS = (
-    ExportColumn("upload_id", "Upload ID", 38),
-    ExportColumn("documento_id", "Documento ID", 38),
-    ExportColumn("nome_arquivo", "Arquivo", 26),
-    ExportColumn("numero_nf", "Numero NF", 18),
-    ExportColumn("cnpj_emitente", "CNPJ Emitente", 20),
-    ExportColumn("cnpj_destinatario", "CNPJ Destinatario", 20),
-    ExportColumn("data_emissao", "Data Emissao", 14),
-    ExportColumn("data_pagamento", "Data Pagamento", 16),
-    ExportColumn("valor_total", "Valor Total", 14),
-    ExportColumn("aprovador", "Aprovador", 24),
-    ExportColumn("descricao", "Descricao", 40),
-    ExportColumn("status", "Status", 16),
-    ExportColumn("resumo", "Resumo", 44),
-    ExportColumn("flag_codigo", "Flag Codigo", 30),
-    ExportColumn("flag_descricao", "Flag Descricao", 72),
-    ExportColumn("flag_severidade", "Flag Severidade", 24),
-    ExportColumn("flag_detectada_em", "Flag Detectada Em", 48),
+    ExportColumn("upload_id", "upload_id", 38),
+    ExportColumn("upload_criado_em", "upload_criado_em", 22),
+    ExportColumn("upload_status", "upload_status", 18),
+    ExportColumn("nome_arquivo", "nome_arquivo", 26),
+    ExportColumn("tamanho_bytes", "tamanho_bytes", 16),
+    ExportColumn("documento_id", "documento_id", 38),
+    ExportColumn("documento_criado_em", "documento_criado_em", 22),
+    ExportColumn("possui_documento", "possui_documento", 16),
+    ExportColumn("documento_status", "documento_status", 18),
+    ExportColumn("tipo_registro", "tipo_registro", 22),
+    ExportColumn("numero_nf", "numero_nf", 18),
+    ExportColumn("cnpj_emitente", "cnpj_emitente", 20),
+    ExportColumn("cnpj_destinatario", "cnpj_destinatario", 20),
+    ExportColumn("data_emissao", "data_emissao", 14),
+    ExportColumn("emissao_ano", "emissao_ano", 12),
+    ExportColumn("emissao_mes", "emissao_mes", 12),
+    ExportColumn("emissao_competencia", "emissao_competencia", 16),
+    ExportColumn("data_pagamento", "data_pagamento", 14),
+    ExportColumn("pagamento_ano", "pagamento_ano", 12),
+    ExportColumn("pagamento_mes", "pagamento_mes", 12),
+    ExportColumn("pagamento_competencia", "pagamento_competencia", 16),
+    ExportColumn("valor_total", "valor_total", 14),
+    ExportColumn("aprovador", "aprovador", 24),
+    ExportColumn("descricao", "descricao", 40),
+    ExportColumn("resumo_processamento", "resumo_processamento", 44),
+    ExportColumn("possui_anomalia", "possui_anomalia", 16),
+    ExportColumn("quantidade_anomalias", "quantidade_anomalias", 18),
+    ExportColumn("quantidade_anomalias_critica", "quantidade_anomalias_critica", 24),
+    ExportColumn("quantidade_anomalias_alta", "quantidade_anomalias_alta", 22),
+    ExportColumn("quantidade_anomalias_media", "quantidade_anomalias_media", 22),
+    ExportColumn("severidade_maxima", "severidade_maxima", 18),
+    ExportColumn("anomalia_id", "anomalia_id", 38),
+    ExportColumn("anomalia_codigo", "anomalia_codigo", 30),
+    ExportColumn("anomalia_descricao", "anomalia_descricao", 72),
+    ExportColumn("anomalia_severidade", "anomalia_severidade", 24),
+    ExportColumn("anomalia_resolvida", "anomalia_resolvida", 18),
+    ExportColumn("anomalia_detectada_em", "anomalia_detectada_em", 24),
+    ExportColumn("anomalia_resolvida_em", "anomalia_resolvida_em", 24),
 )
 
 AUDIT_LOG_EXPORT_COLUMNS = (
-    ExportColumn("id", "ID", 38),
-    ExportColumn("evento", "Evento", 28),
-    ExportColumn("entidade_tipo", "Entidade Tipo", 20),
-    ExportColumn("entidade_id", "Entidade ID", 38),
-    ExportColumn("usuario", "Usuario", 24),
-    ExportColumn("ip", "IP", 18),
-    ExportColumn("payload", "Payload", 60),
-    ExportColumn("timestamp", "Timestamp", 24),
+    ExportColumn("audit_log_id", "audit_log_id", 38),
+    ExportColumn("evento", "evento", 28),
+    ExportColumn("entidade_tipo", "entidade_tipo", 20),
+    ExportColumn("entidade_id", "entidade_id", 38),
+    ExportColumn("usuario", "usuario", 24),
+    ExportColumn("ip", "ip", 18),
+    ExportColumn("payload_json", "payload_json", 60),
+    ExportColumn("timestamp_brasilia", "timestamp_brasilia", 24),
 )
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F2937") if PatternFill else None
-GMT_PLUS_THREE = timezone(timedelta(hours=3))
+BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
+BRAZILIAN_DATE_FORMAT = "%d/%m/%Y"
+BRAZILIAN_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
 SEVERITY_ORDER = {
     "CRITICA": 3,
     "ALTA": 2,
@@ -114,58 +138,103 @@ def _select_latest_document(upload: Upload) -> Documento | None:
     return max(upload.documentos, key=lambda documento: documento.criado_em or datetime.min)
 
 
-def _format_flag_detected_at(value: datetime | None) -> str | None:
+def _to_brasilia_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
 
     resolved_value = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    return resolved_value.astimezone(GMT_PLUS_THREE).isoformat(sep=" ", timespec="seconds")
+    return resolved_value.astimezone(BRASILIA_TZ)
 
 
-def _join_export_values(values: list[str | None]) -> str | None:
-    normalized_values = [value.strip() for value in values if isinstance(value, str) and value.strip()]
-    if not normalized_values:
-        return None
-    return " | ".join(normalized_values)
-
-
-def _build_flag_export_fields(anomalias: list[Any]) -> dict[str, str | None]:
-    if not anomalias:
+def _build_date_dimensions(prefix: str, value: date | None) -> dict[str, int | str | None]:
+    if value is None:
         return {
-            "flag_codigo": None,
-            "flag_descricao": None,
-            "flag_severidade": None,
-            "flag_detectada_em": None,
+            f"{prefix}_ano": None,
+            f"{prefix}_mes": None,
+            f"{prefix}_competencia": None,
         }
 
     return {
-        "flag_codigo": _join_export_values([anomalia.codigo for anomalia in anomalias]),
-        "flag_descricao": _join_export_values([anomalia.descricao for anomalia in anomalias]),
-        "flag_severidade": _join_export_values([anomalia.severidade for anomalia in anomalias]),
-        "flag_detectada_em": _join_export_values(
-            [_format_flag_detected_at(anomalia.criado_em) for anomalia in anomalias]
-        ),
+        f"{prefix}_ano": value.year,
+        f"{prefix}_mes": value.month,
+        f"{prefix}_competencia": f"{value.year:04d}-{value.month:02d}",
     }
 
 
-def _resolve_export_severity(value: Any) -> str:
-    severities = [
-        item.strip().upper()
-        for item in str(value or "").split("|")
-        if item.strip()
-    ]
+def _count_anomalies_by_severity(anomalias: list[Any], severity: str) -> int:
+    severity_upper = severity.upper()
+    return sum(1 for anomalia in anomalias if str(anomalia.severidade).upper() == severity_upper)
+
+
+def _resolve_max_severity(anomalias: list[Any]) -> str | None:
+    severities = [str(anomalia.severidade).upper() for anomalia in anomalias if anomalia.severidade]
     if not severities:
-        return ""
+        return None
     return max(severities, key=lambda item: SEVERITY_ORDER.get(item, 0))
+
+
+def _resolve_export_severity(value: Any) -> str:
+    severity = str(value or "").strip().upper()
+    if not severity:
+        return ""
+    return severity
+
+
+def _serialize_datetime(value: datetime) -> str:
+    brasilia_value = _to_brasilia_datetime(value)
+    if brasilia_value is None:
+        return ""
+    return brasilia_value.strftime(BRAZILIAN_DATETIME_FORMAT)
+
+
+def _serialize_date(value: date) -> str:
+    return value.strftime(BRAZILIAN_DATE_FORMAT)
+
+
+def _build_document_metrics(anomalias: list[Any]) -> dict[str, int | str | None]:
+    quantidade_anomalias = len(anomalias)
+    severidade_maxima = _resolve_max_severity(anomalias)
+
+    return {
+        "possui_anomalia": 1 if quantidade_anomalias else 0,
+        "quantidade_anomalias": quantidade_anomalias,
+        "quantidade_anomalias_critica": _count_anomalies_by_severity(anomalias, "CRITICA"),
+        "quantidade_anomalias_alta": _count_anomalies_by_severity(anomalias, "ALTA"),
+        "quantidade_anomalias_media": _count_anomalies_by_severity(anomalias, "MEDIA"),
+        "severidade_maxima": severidade_maxima,
+    }
+
+
+def _build_anomaly_export_fields(anomalia: Any | None) -> dict[str, Any]:
+    if anomalia is None:
+        return {
+            "anomalia_id": None,
+            "anomalia_codigo": None,
+            "anomalia_descricao": None,
+            "anomalia_severidade": None,
+            "anomalia_resolvida": None,
+            "anomalia_detectada_em": None,
+            "anomalia_resolvida_em": None,
+        }
+
+    return {
+        "anomalia_id": anomalia.id,
+        "anomalia_codigo": anomalia.codigo,
+        "anomalia_descricao": anomalia.descricao,
+        "anomalia_severidade": anomalia.severidade,
+        "anomalia_resolvida": 1 if anomalia.resolvida else 0,
+        "anomalia_detectada_em": anomalia.criado_em,
+        "anomalia_resolvida_em": anomalia.resolvida_em,
+    }
 
 
 def _serialize_value(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, datetime):
-        return value.isoformat(sep=" ", timespec="seconds")
+        return _serialize_datetime(value)
     if isinstance(value, date):
-        return value.isoformat()
+        return _serialize_date(value)
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, UUID):
@@ -193,19 +262,28 @@ def _build_document_export_rows(
             rows.append(
                 {
                     "upload_id": upload.id,
+                    "upload_criado_em": upload.criado_em,
+                    "upload_status": upload.status,
                     "documento_id": None,
                     "nome_arquivo": upload.nome_arquivo,
+                    "tamanho_bytes": upload.tamanho_bytes,
+                    "documento_criado_em": None,
+                    "possui_documento": 0,
+                    "documento_status": None,
+                    "tipo_registro": "upload_sem_documento",
                     "numero_nf": None,
                     "cnpj_emitente": None,
                     "cnpj_destinatario": None,
                     "data_emissao": None,
                     "data_pagamento": None,
+                    **_build_date_dimensions("emissao", None),
+                    **_build_date_dimensions("pagamento", None),
                     "valor_total": None,
                     "aprovador": None,
                     "descricao": None,
-                    "status": upload.status,
-                    "resumo": _build_summary(upload.status, 0),
-                    **_build_flag_export_fields([]),
+                    "resumo_processamento": _build_summary(upload.status, 0),
+                    **_build_document_metrics([]),
+                    **_build_anomaly_export_fields(None),
                 }
             )
             continue
@@ -216,26 +294,36 @@ def _build_document_export_rows(
 
         base_row = {
             "upload_id": upload.id,
-            "documento_id": documento.id,
+            "upload_criado_em": upload.criado_em,
+            "upload_status": upload.status,
             "nome_arquivo": upload.nome_arquivo,
+            "tamanho_bytes": upload.tamanho_bytes,
+            "documento_id": documento.id,
+            "documento_criado_em": documento.criado_em,
+            "possui_documento": 1,
+            "documento_status": documento.status_extracao,
             "numero_nf": documento.numero_nf,
             "cnpj_emitente": documento.cnpj_emitente,
             "cnpj_destinatario": documento.cnpj_destinatario,
             "data_emissao": documento.data_emissao,
             "data_pagamento": documento.data_pagamento,
+            **_build_date_dimensions("emissao", documento.data_emissao),
+            **_build_date_dimensions("pagamento", documento.data_pagamento),
             "valor_total": documento.valor_total,
             "aprovador": documento.aprovador,
             "descricao": documento.descricao,
-            "status": documento.status_extracao,
-            "resumo": _build_summary(documento.status_extracao, len(anomalias)),
+            "resumo_processamento": _build_summary(documento.status_extracao, len(anomalias)),
+            **_build_document_metrics(anomalias),
         }
 
-        rows.append(
-            {
-                **base_row,
-                **_build_flag_export_fields(anomalias),
-            }
-        )
+        for anomalia in anomalias or [None]:
+            rows.append(
+                {
+                    **base_row,
+                    "tipo_registro": "documento_com_anomalia" if anomalia is not None else "documento_sem_anomalia",
+                    **_build_anomaly_export_fields(anomalia),
+                }
+            )
 
     return rows
 
@@ -244,14 +332,14 @@ def _build_audit_log_export_rows(db: DbSession) -> list[dict[str, Any]]:
     audit_logs = db.scalars(select(AuditLog).order_by(AuditLog.timestamp.desc())).all()
     return [
         {
-            "id": audit_log.id,
+            "audit_log_id": audit_log.id,
             "evento": audit_log.evento,
             "entidade_tipo": audit_log.entidade_tipo,
             "entidade_id": audit_log.entidade_id,
             "usuario": audit_log.usuario,
             "ip": audit_log.ip,
-            "payload": audit_log.payload,
-            "timestamp": audit_log.timestamp,
+            "payload_json": audit_log.payload,
+            "timestamp_brasilia": audit_log.timestamp,
         }
         for audit_log in audit_logs
     ]
@@ -582,7 +670,7 @@ def export_documentos_excel(
                     title="Documentos",
                     columns=DOCUMENT_EXPORT_COLUMNS,
                     rows=document_rows,
-                    severity_key="flag_severidade",
+                    severity_key="anomalia_severidade",
                 ),
                 ExportSheet(
                     title="Log Auditoria",
