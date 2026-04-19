@@ -127,6 +127,7 @@
       currentPage: 1,
       pageSize: Number.isFinite(options.pageSize) ? options.pageSize : 10,
       totalDocuments: 0,
+      stats: null,
       loading: false
     };
 
@@ -187,10 +188,10 @@
 
     function render() {
       var visibleDocuments = state.documents.slice();
-      var stats = root.DocAuditUiLogic.buildDashboardStats(visibleDocuments);
+      var stats = state.stats || root.DocAuditUiLogic.buildDashboardStats(visibleDocuments);
 
       elements.stats.total.textContent = stats.total;
-      elements.stats.withFlags.textContent = stats.withFlags;
+      elements.stats.withFlags.textContent = stats.with_flags !== undefined ? stats.with_flags : stats.withFlags;
       elements.stats.critical.textContent = stats.critical;
       elements.stats.processing.textContent = stats.processing;
 
@@ -307,6 +308,12 @@
         state.totalDocuments = Math.max(0, Math.floor(pagination.totalDocuments));
       } else {
         state.totalDocuments = state.documents.length;
+      }
+
+      if (pagination && pagination.stats) {
+        state.stats = pagination.stats;
+      } else {
+        state.stats = null;
       }
 
       if (

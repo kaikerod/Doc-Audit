@@ -90,9 +90,17 @@ class DocumentoListItem(BaseModel):
     flags: list[DocumentoAnomaliaRead] = Field(default_factory=list)
 
 
+class DocumentoListStats(BaseModel):
+    total: int
+    with_flags: int
+    critical: int
+    processing: int
+
+
 class DocumentoListResponse(BaseModel):
     total: int
     limit: int
     offset: int
     has_more: bool
+    stats: DocumentoListStats | None = None
     items: list[DocumentoListItem]

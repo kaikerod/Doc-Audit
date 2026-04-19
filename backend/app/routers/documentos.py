@@ -13,7 +13,7 @@ from ..database import DbSession, get_db
 from ..models.anomalia import Anomalia
 from ..models.documento import Documento
 from ..models.upload import Upload
-from ..schemas.documento import DocumentoAnomaliaRead, DocumentoListItem, DocumentoListResponse
+from ..schemas.documento import DocumentoAnomaliaRead, DocumentoListItem, DocumentoListResponse, DocumentoListStats
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/documentos", tags=["documentos"])
 
@@ -197,6 +197,31 @@ def list_documentos(
     )
     ordered_query = filtered_query.order_by(Upload.criado_em.desc(), Upload.nome_arquivo.asc(), Upload.id.desc())
     total = db.scalar(select(func.count()).select_from(count_query.subquery())) or 0
+    with_flags = db.scalar(
+        select(func.count()).select_from(
+            count_query.where(Upload.documentos.any(Documento.anomalias.any())).subquery()
+        )
+    ) or 0
+    critical = db.scalar(
+        select(func.count()).select_from(
+            count_query.where(
+                Upload.documentos.any(
+                    Documento.anomalias.any(Anomalia.severidade == "CRITICA")
+                )
+            ).subquery()
+        )
+    ) or 0
+    processing = db.scalar(
+        select(func.count()).select_from(
+            count_query.where(
+                or_(
+                    Upload.status.in_(("pendente", "processando")),
+                    Upload.documentos.any(Documento.status_extracao.in_(("pendente", "processando"))),
+                )
+            ).subquery()
+        )
+    ) or 0
+
     uploads = db.scalars(
         ordered_query.offset(offset).limit(limit)
     ).all()
@@ -206,5 +231,11 @@ def list_documentos(
         limit=limit,
         offset=offset,
         has_more=offset + len(uploads) < total,
+        stats=DocumentoListStats(
+            total=total,
+            with_flags=with_flags,
+            critical=critical,
+            processing=processing,
+        ),
         items=[_map_upload_to_list_item(upload) for upload in uploads],
     )

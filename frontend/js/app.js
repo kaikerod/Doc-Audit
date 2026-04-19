@@ -63,7 +63,8 @@
       tableController.setDocuments(documents, {
         currentPage: currentPage,
         pageSize: payload.limit || DOCUMENT_PAGE_SIZE,
-        totalDocuments: payload.total
+        totalDocuments: payload.total,
+        stats: payload.stats
       });
       return documents;
     } catch (error) {
