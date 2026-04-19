@@ -5,7 +5,9 @@ from uuid import uuid4
 
 import pytest
 
+from backend.app.config import settings
 from backend.app.services.queue_service import enqueue_upload_processing
+from backend.app.services.queue_service import build_queue_health_check
 
 
 def test_enqueue_upload_processing_adds_observability_context(
@@ -26,3 +28,15 @@ def test_enqueue_upload_processing_adds_observability_context(
     assert apply_async.call_args.kwargs["kwargs"]["countdown_seconds"] == 0
     assert apply_async.call_args.kwargs["kwargs"]["queued_at"]
     assert any('"event": "upload_processing_enqueued"' in record.message for record in caplog.records)
+
+
+def test_build_queue_health_check_is_not_required_in_sync_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "processing_mode", "sync")
+
+    assert build_queue_health_check() == (
+        "disabled",
+        True,
+        "Processamento sincrono habilitado. Redis e worker nao sao necessarios neste ambiente.",
+    )

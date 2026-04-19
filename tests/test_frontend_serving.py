@@ -13,7 +13,7 @@ def test_root_serves_frontend_dashboard() -> None:
     assert response.headers["content-type"].startswith("text/html")
     assert "DocAudit" in response.text
     assert 'href="favicon.svg"' in response.text
-    assert 'src="js/app.js"' in response.text
+    assert 'src="js/app.js?v=2"' in response.text
 
 
 def test_favicon_is_served_without_404() -> None:

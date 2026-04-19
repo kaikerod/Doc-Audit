@@ -87,3 +87,55 @@ def test_load_dotenv_file_does_not_override_existing_env_vars(
         dotenv_path.unlink(missing_ok=True)
 
     assert config.os.environ["OPENROUTER_API_KEY"] == "existing-key"
+
+
+def test_load_dotenv_file_is_skipped_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dotenv_path = _write_test_dotenv("OPENROUTER_API_KEY=dotenv-key\n")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+
+    try:
+        config._load_dotenv_file(dotenv_path)
+    finally:
+        dotenv_path.unlink(missing_ok=True)
+
+    assert config.os.environ.get("OPENROUTER_API_KEY") is None
+
+
+def test_resolve_processing_mode_defaults_to_queue_outside_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.delenv("VERCEL_ENV", raising=False)
+    monkeypatch.delenv("VERCEL_URL", raising=False)
+
+    assert config._resolve_processing_mode() == "queue"
+
+
+def test_resolve_processing_mode_defaults_to_sync_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+
+    assert config._resolve_processing_mode() == "sync"
+
+
+def test_default_upload_dir_uses_temp_directory_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VERCEL", "1")
+
+    assert Path(config._default_upload_dir()).parts[-2:] == ("docaudit", "uploads")
+
+
+def test_default_database_url_uses_temp_sqlite_on_vercel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VERCEL", "1")
+
+    assert config._default_database_url().startswith("sqlite+pysqlite:///")
+    assert config._default_database_url().endswith("/docaudit.db")

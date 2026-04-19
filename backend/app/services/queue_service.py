@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_queue_health_check() -> tuple[str, bool, str | None]:
+    if settings.processing_mode != "queue":
+        return (
+            "disabled",
+            True,
+            "Processamento sincrono habilitado. Redis e worker nao sao necessarios neste ambiente.",
+        )
+
     parsed_url = urlparse(settings.redis_url)
     if not parsed_url.hostname:
         return (
@@ -35,6 +42,12 @@ def build_queue_health_check() -> tuple[str, bool, str | None]:
 
 
 def enqueue_upload_processing(upload_id: UUID) -> str:
+    if settings.processing_mode != "queue":
+        raise RuntimeError(
+            "A fila de processamento esta desabilitada para o modo atual. "
+            "Use o modo queue para enfileirar uploads."
+        )
+
     countdown = 0
     queued_at = utcnow_iso()
     async_result = process_upload_document.apply_async(

@@ -1,0 +1,16 @@
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+.git
+.pytest_cache
+node_modules
+storage
+tests
+tests/.tmp
+tests/pytest-cache-files-*
+pytest-cache-files-*
+docaudit.db
+docker-compose.yml
+backend/Dockerfile

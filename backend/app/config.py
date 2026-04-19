@@ -2,10 +2,10 @@ import os
 from math import ceil
 from dataclasses import dataclass, field
 from pathlib import Path
+import tempfile
 
 from sqlalchemy.engine.url import make_url
 
-DEFAULT_DATABASE_URL = "sqlite+pysqlite:///./docaudit.db"
 DOCKER_DATABASE_HOST = "db"
 HOST_DATABASE_HOST = "127.0.0.1"
 DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
@@ -19,7 +19,7 @@ def _strip_env_value(raw_value: str) -> str:
 
 
 def _load_dotenv_file(dotenv_path: Path = DOTENV_PATH) -> None:
-    if not dotenv_path.exists():
+    if _is_vercel_environment() or not dotenv_path.exists():
         return
 
     for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
@@ -33,9 +33,6 @@ def _load_dotenv_file(dotenv_path: Path = DOTENV_PATH) -> None:
             continue
 
         os.environ[normalized_key] = _strip_env_value(raw_value)
-
-
-_load_dotenv_file()
 
 
 def _parse_csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
@@ -85,6 +82,42 @@ def _is_running_in_container() -> bool:
     return Path("/.dockerenv").exists()
 
 
+def _is_vercel_environment() -> bool:
+    return any(
+        os.getenv(env_name, "").strip()
+        for env_name in ("VERCEL", "VERCEL_ENV", "VERCEL_URL")
+    )
+
+
+def _default_upload_dir() -> str:
+    if _is_vercel_environment():
+        return str(Path(tempfile.gettempdir()) / "docaudit" / "uploads")
+
+    return "storage/uploads"
+
+
+def _default_database_url() -> str:
+    if _is_vercel_environment():
+        temp_database_path = (Path(tempfile.gettempdir()) / "docaudit.db").as_posix()
+        return f"sqlite+pysqlite:///{temp_database_path}"
+
+    return "sqlite+pysqlite:///./docaudit.db"
+
+
+def _resolve_processing_mode() -> str:
+    configured_mode = os.getenv("DOC_AUDIT_PROCESSING_MODE", "").strip().lower()
+    if configured_mode in {"queue", "sync"}:
+        return configured_mode
+
+    if _is_vercel_environment():
+        return "sync"
+
+    return "queue"
+
+
+_load_dotenv_file()
+
+
 def _normalize_database_url(database_url: str) -> str:
     normalized_url = database_url.strip()
     if not normalized_url or _is_running_in_container():
@@ -101,6 +134,9 @@ def _normalize_database_url(database_url: str) -> str:
     # The checked-in env template is used by Docker Compose, where `db` is resolvable.
     # When the API starts directly on the host, switch to the published Postgres port.
     return parsed_url.set(host=HOST_DATABASE_HOST).render_as_string(hide_password=False)
+
+
+DEFAULT_DATABASE_URL = _default_database_url()
 
 
 LEGACY_OPENROUTER_TIMEOUT_SECONDS = _coerce_positive_float(
@@ -157,7 +193,9 @@ class Settings:
     app_name: str = os.getenv("APP_NAME", "DocAudit")
     app_version: str = os.getenv("APP_VERSION", "0.1.0")
     api_v1_prefix: str = "/api/v1"
-    upload_dir: str = os.getenv("UPLOAD_DIR", "storage/uploads")
+    is_vercel: bool = _is_vercel_environment()
+    processing_mode: str = _resolve_processing_mode()
+    upload_dir: str = os.getenv("UPLOAD_DIR", _default_upload_dir())
     upload_max_size_bytes: int = int(os.getenv("UPLOAD_MAX_SIZE_BYTES", str(5 * 1024 * 1024)))
     upload_max_files: int = int(os.getenv("UPLOAD_MAX_FILES", "250"))
     # SQLite keeps direct local runs lightweight; Docker overrides this with Postgres.

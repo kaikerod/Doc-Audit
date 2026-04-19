@@ -137,6 +137,10 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
 .envrc
 .venv
 env/
@@ -201,8 +205,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.vercel/
 
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.vercel

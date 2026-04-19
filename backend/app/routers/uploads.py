@@ -16,10 +16,13 @@ from ..services.audit_service import log_audit_event
 from ..services.document_processing_service import (
     TxtDecodingError,
     build_failed_upload_bundle,
+    build_processed_upload_bundle,
     build_pending_upload_bundle,
     cleanup_failed_uploads,
     cleanup_pending_uploads,
+    cleanup_processed_uploads,
     persist_failed_uploads,
+    persist_processed_uploads,
     persist_pending_uploads,
 )
 from ..services.queue_service import enqueue_upload_processing
@@ -134,6 +137,76 @@ def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
     return upload
 
 
+def _persist_failed_upload_record(
+    *,
+    db: DbSession,
+    original_name: str,
+    content: bytes,
+    storage_dir: Path,
+    error_message: str,
+    request_ip: str | None,
+) -> Upload:
+    failed_upload = build_failed_upload_bundle(
+        original_name=original_name,
+        content=content,
+        storage_dir=storage_dir,
+        error_message=error_message,
+    )
+    try:
+        persist_failed_uploads(db, [failed_upload], ip=request_ip)
+    except Exception:
+        db.rollback()
+        cleanup_failed_uploads([failed_upload])
+        raise
+
+    return failed_upload.upload
+
+
+def _handle_sync_upload(
+    *,
+    db: DbSession,
+    original_name: str,
+    content: bytes,
+    storage_dir: Path,
+    request_ip: str | None,
+) -> Upload:
+    try:
+        processed_upload = build_processed_upload_bundle(
+            db,
+            original_name=original_name,
+            content=content,
+            storage_dir=storage_dir,
+        )
+        try:
+            persist_processed_uploads(db, [processed_upload], ip=request_ip)
+        except Exception:
+            db.rollback()
+            cleanup_processed_uploads([processed_upload])
+            raise
+
+        return processed_upload.upload
+    except TxtDecodingError as exc:
+        db.rollback()
+        return _persist_failed_upload_record(
+            db=db,
+            original_name=original_name,
+            content=content,
+            storage_dir=storage_dir,
+            error_message=str(exc),
+            request_ip=request_ip,
+        )
+    except Exception as exc:
+        db.rollback()
+        return _persist_failed_upload_record(
+            db=db,
+            original_name=original_name,
+            content=content,
+            storage_dir=storage_dir,
+            error_message=str(exc),
+            request_ip=request_ip,
+        )
+
+
 @router.post(
     "",
     response_model=UploadBatchResponse,
@@ -141,7 +214,7 @@ def _get_upload_or_404(db: DbSession, upload_id: UUID) -> Upload:
     description=(
         f"Recebe ate {settings.upload_max_files} arquivos .txt por envio, incluindo "
         "arquivos extraidos de pacotes .zip. Cada item e validado por extensao e "
-        "tamanho antes de ser enfileirado."
+        "tamanho antes de seguir para processamento."
     ),
 )
 async def create_uploads(
@@ -164,6 +237,18 @@ async def create_uploads(
         _validate_upload_count(len(validated_files))
 
     for original_name, content in validated_files:
+        if settings.processing_mode == "sync":
+            persisted_uploads.append(
+                _handle_sync_upload(
+                    db=db,
+                    original_name=original_name,
+                    content=content,
+                    storage_dir=storage_dir,
+                    request_ip=request_ip,
+                )
+            )
+            continue
+
         try:
             pending_upload = build_pending_upload_bundle(
                 original_name=original_name,
@@ -199,20 +284,16 @@ async def create_uploads(
             persisted_uploads.append(pending_upload.upload)
         except TxtDecodingError as exc:
             db.rollback()
-            failed_upload = build_failed_upload_bundle(
-                original_name=original_name,
-                content=content,
-                storage_dir=storage_dir,
-                error_message=str(exc),
+            persisted_uploads.append(
+                _persist_failed_upload_record(
+                    db=db,
+                    original_name=original_name,
+                    content=content,
+                    storage_dir=storage_dir,
+                    error_message=str(exc),
+                    request_ip=request_ip,
+                )
             )
-            try:
-                persist_failed_uploads(db, [failed_upload], ip=request_ip)
-            except Exception:
-                db.rollback()
-                cleanup_failed_uploads([failed_upload])
-                raise
-
-            persisted_uploads.append(failed_upload.upload)
         except Exception:
             db.rollback()
             raise

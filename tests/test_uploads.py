@@ -18,6 +18,7 @@ from backend.app.models.audit_log import AuditLog
 from backend.app.models.documento import Documento
 from backend.app.models.upload import Upload
 from backend.app.routers.uploads import get_upload_storage_dir
+from backend.app.schemas.documento import DocumentExtractionResult
 
 
 @pytest.fixture()
@@ -109,6 +110,53 @@ def test_upload_marks_error_when_enqueue_fails(
         "arquivo": "nota-fiscal.txt",
         "erro": "Falha ao enfileirar processamento: Redis down",
     }
+
+
+def test_upload_sync_mode_processes_file_immediately(
+    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
+    monkeypatch.setattr(settings, "processing_mode", "sync")
+    monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
+    monkeypatch.setattr(
+        "backend.app.services.document_processing_service.extract_document_data",
+        lambda _content: DocumentExtractionResult(
+            numero_nf="NF-2026-001",
+            cnpj_emitente="11.222.333/0001-81",
+            cnpj_destinatario="22.333.444/0001-55",
+            data_emissao=date(2026, 4, 10),
+            data_pagamento=date(2026, 4, 11),
+            valor_total=Decimal("321.45"),
+            aprovador="Maria Silva",
+            descricao="Servico de auditoria",
+        ),
+    )
+
+    with patch("backend.app.routers.uploads.enqueue_upload_processing") as enqueue_mock:
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/uploads",
+                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["status"] == "concluido"
+    enqueue_mock.assert_not_called()
+
+    saved_upload = db_session.scalar(select(Upload))
+    assert saved_upload is not None
+    assert saved_upload.status == "concluido"
+
+    saved_documento = db_session.scalar(select(Documento))
+    assert saved_documento is not None
+    assert saved_documento.numero_nf == "NF-2026-001"
+    assert saved_documento.status_extracao == "concluido"
 
 
 def test_upload_persists_error_record_when_txt_is_not_utf8(
