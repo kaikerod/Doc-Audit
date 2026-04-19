@@ -5,11 +5,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from ..config import settings
 from ..database import DbSession, get_db
+from ..models.anomalia import Anomalia
 from ..models.documento import Documento
 from ..models.upload import Upload
 from ..schemas.documento import DocumentoAnomaliaRead, DocumentoListItem, DocumentoListResponse
@@ -37,6 +38,13 @@ def _datetime_sort_key(value: Any) -> str:
     if isinstance(value, datetime):
         return value.isoformat()
     return ""
+
+
+def _normalize_filter_value(value: str | None) -> str:
+    if not isinstance(value, str):
+        return ""
+
+    return value.strip().casefold()
 
 
 def _build_summary(status: Any, flags: list[DocumentoAnomaliaRead]) -> str:
@@ -109,6 +117,57 @@ def _map_upload_to_list_item(upload: Upload) -> DocumentoListItem:
     )
 
 
+def _apply_document_filters(
+    query,
+    *,
+    search: str,
+    status: str,
+    severity: str,
+):
+    normalized_search = _normalize_filter_value(search)
+    normalized_status = _normalize_filter_value(status) or "todos"
+    normalized_severity = _normalize_filter_value(severity) or "todas"
+
+    if normalized_search:
+        search_pattern = f"%{normalized_search}%"
+        query = query.where(
+            or_(
+                func.lower(Upload.nome_arquivo).like(search_pattern),
+                Upload.documentos.any(
+                    func.lower(func.coalesce(Documento.numero_nf, "")).like(search_pattern)
+                ),
+            )
+        )
+
+    if normalized_status == "com_anomalia":
+        query = query.where(Upload.documentos.any(Documento.anomalias.any()))
+    elif normalized_status == "sem_anomalia":
+        query = query.where(~Upload.documentos.any(Documento.anomalias.any()))
+    elif normalized_status == "processando":
+        query = query.where(
+            or_(
+                Upload.status.in_(("pendente", "processando")),
+                Upload.documentos.any(Documento.status_extracao.in_(("pendente", "processando"))),
+            )
+        )
+    elif normalized_status == "erro":
+        query = query.where(
+            or_(
+                Upload.status == "erro",
+                Upload.documentos.any(Documento.status_extracao == "erro"),
+            )
+        )
+
+    if normalized_severity in {"critica", "alta", "media"}:
+        query = query.where(
+            Upload.documentos.any(
+                Documento.anomalias.any(Anomalia.severidade == normalized_severity.upper())
+            )
+        )
+
+    return query
+
+
 @router.get(
     "",
     response_model=DocumentoListResponse,
@@ -116,20 +175,36 @@ def _map_upload_to_list_item(upload: Upload) -> DocumentoListItem:
     description="Retorna uma lista paginada de todos os uploads realizados, incluindo os dados extraídos pela IA e as flags de anomalia detectadas.",
 )
 def list_documentos(
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    query: str | None = Query(default=None),
+    status: str = Query(default="todos"),
+    severity: str = Query(default="todas"),
     db: DbSession = Depends(get_db),
 ) -> DocumentoListResponse:
-    total = db.scalar(select(func.count()).select_from(Upload)) or 0
+    count_query = _apply_document_filters(
+        select(Upload),
+        search=query or "",
+        status=status,
+        severity=severity,
+    )
+    base_query = select(Upload).options(selectinload(Upload.documentos).selectinload(Documento.anomalias))
+    filtered_query = _apply_document_filters(
+        base_query,
+        search=query or "",
+        status=status,
+        severity=severity,
+    )
+    ordered_query = filtered_query.order_by(Upload.criado_em.desc(), Upload.nome_arquivo.asc(), Upload.id.desc())
+    total = db.scalar(select(func.count()).select_from(count_query.subquery())) or 0
     uploads = db.scalars(
-        select(Upload)
-        .options(selectinload(Upload.documentos).selectinload(Documento.anomalias))
-        .order_by(Upload.criado_em.desc())
-        .offset(offset)
-        .limit(limit)
+        ordered_query.offset(offset).limit(limit)
     ).all()
 
     return DocumentoListResponse(
         total=total,
+        limit=limit,
+        offset=offset,
+        has_more=offset + len(uploads) < total,
         items=[_map_upload_to_list_item(upload) for upload in uploads],
     )

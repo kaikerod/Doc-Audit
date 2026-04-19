@@ -195,8 +195,37 @@
     };
   }
 
-  async function fetchDocuments() {
-    const response = await fetch(buildApiUrl(API_PREFIX + "/documentos"));
+  async function fetchDocuments(options) {
+    var safeOptions = options || {};
+    var params = new URLSearchParams();
+
+    if (Number.isFinite(safeOptions.limit)) {
+      params.set("limit", String(Math.max(1, Math.floor(safeOptions.limit))));
+    }
+
+    if (Number.isFinite(safeOptions.offset)) {
+      params.set("offset", String(Math.max(0, Math.floor(safeOptions.offset))));
+    }
+
+    if (typeof safeOptions.query === "string" && safeOptions.query.trim()) {
+      params.set("query", safeOptions.query.trim());
+    }
+
+    if (typeof safeOptions.status === "string" && safeOptions.status.trim()) {
+      params.set("status", safeOptions.status.trim());
+    }
+
+    if (typeof safeOptions.severity === "string" && safeOptions.severity.trim()) {
+      params.set("severity", safeOptions.severity.trim());
+    }
+
+    var path = API_PREFIX + "/documentos";
+    var queryString = params.toString();
+    if (queryString) {
+      path += "?" + queryString;
+    }
+
+    const response = await fetch(buildApiUrl(path));
     if (!response.ok) {
       throw new Error("N\u00e3o foi poss\u00edvel carregar os documentos do dashboard.");
     }

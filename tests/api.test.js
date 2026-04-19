@@ -81,6 +81,40 @@ describe("DocAudit API", () => {
     expect(global.fetch.mock.calls[1][1].method).toBe("POST");
   });
 
+  test("fetchDocuments envia limit, offset e filtros na query string", async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        total: 3,
+        limit: 50,
+        offset: 50,
+        has_more: true,
+        items: []
+      })
+    });
+
+    await expect(
+      global.DocAuditApi.fetchDocuments({
+        limit: 50,
+        offset: 50,
+        query: "NF-2026",
+        status: "com_anomalia",
+        severity: "CRITICA"
+      })
+    ).resolves.toEqual({
+      total: 3,
+      limit: 50,
+      offset: 50,
+      has_more: true,
+      items: []
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:8000/api/v1/documentos?limit=50&offset=50&query=NF-2026&status=com_anomalia&severity=CRITICA"
+    );
+  });
+
   test("uploadFiles divide a selecao em multiplos POSTs quando o health informa limite menor", async () => {
     const files = [
       { name: "nota-1.txt", size: 10 },

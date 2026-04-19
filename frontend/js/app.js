@@ -1,6 +1,8 @@
 (function (root) {
   var DOCUMENT_POLL_INTERVAL_MS = 4000;
+  var DOCUMENT_PAGE_SIZE = 10;
   var documentPollTimerId = null;
+  var documentRequestToken = 0;
 
   function applyOfflineApiHealth(indicator, copyNode) {
     indicator.textContent = "Offline";
@@ -28,11 +30,60 @@
     }
   }
 
-  async function loadDocuments(tableController) {
-    var payload = await root.DocAuditApi.fetchDocuments();
-    var documents = root.DocAuditUiLogic.mapApiDocumentsToViewModels(payload.items);
-    tableController.setDocuments(documents);
-    return documents;
+  function readDocumentFilters() {
+    return {
+      query: document.getElementById("document-search-input").value,
+      status: document.getElementById("document-status-filter").value,
+      severity: document.getElementById("document-severity-filter").value
+    };
+  }
+
+  async function loadDocuments(tableController, options) {
+    var safeOptions = options || {};
+    var currentPage = Number.isFinite(safeOptions.page) ? Math.max(1, Math.floor(safeOptions.page)) : 1;
+    var requestToken = ++documentRequestToken;
+    var filters = readDocumentFilters();
+
+    tableController.setLoading(true);
+
+    try {
+      var payload = await root.DocAuditApi.fetchDocuments({
+        limit: DOCUMENT_PAGE_SIZE,
+        offset: (currentPage - 1) * DOCUMENT_PAGE_SIZE,
+        query: filters.query,
+        status: filters.status,
+        severity: filters.severity
+      });
+
+      if (requestToken !== documentRequestToken) {
+        return null;
+      }
+
+      var documents = root.DocAuditUiLogic.mapApiDocumentsToViewModels(payload.items);
+      tableController.setDocuments(documents, {
+        currentPage: currentPage,
+        pageSize: payload.limit || DOCUMENT_PAGE_SIZE,
+        totalDocuments: payload.total
+      });
+      return documents;
+    } catch (error) {
+      if (requestToken === documentRequestToken) {
+        tableController.setLoading(false);
+      }
+
+      throw error;
+    }
+  }
+
+  function reloadDocuments(tableController, options) {
+    return loadDocuments(tableController, options).then(function (documents) {
+      if (!documents) {
+        return null;
+      }
+
+      syncDocumentPolling(tableController, documents);
+      return documents;
+    });
   }
 
   function stopDocumentPolling() {
@@ -74,6 +125,7 @@
     var clearAllButton = document.getElementById("clear-all-button");
     var tableController = root.DocAuditTable.createTableController({
       initialDocuments: [],
+      pageSize: DOCUMENT_PAGE_SIZE,
       dashboardGrid: document.getElementById("results-layout"),
       tableBody: document.getElementById("results-table-body"),
       emptyState: document.getElementById("results-empty-state"),
@@ -87,6 +139,20 @@
       detailMetadata: document.getElementById("detail-metadata"),
       detailFlags: document.getElementById("detail-flags"),
       clearAllCluster: document.getElementById("clear-all-cluster"),
+      onPageChange: function (page) {
+        reloadDocuments(tableController, {
+          page: page
+        }).catch(function (error) {
+          console.error(error);
+        });
+      },
+      onFiltersChange: function () {
+        reloadDocuments(tableController, {
+          page: 1
+        }).catch(function (error) {
+          console.error(error);
+        });
+      },
       onDeleteUpload: async function (document) {
         if (!document || !document.uploadId) {
           return;
@@ -97,7 +163,9 @@
         }
 
         await root.DocAuditApi.deleteUpload(document.uploadId);
-        tableController.removeDocumentByUploadId(document.uploadId);
+        await reloadDocuments(tableController, {
+          page: tableController.getCurrentPage()
+        });
       },
       stats: {
         total: document.getElementById("stat-total"),
@@ -121,8 +189,9 @@
       maxFiles: 250,
       maxSizeBytes: 5 * 1024 * 1024,
       onUploadSuccess: async function () {
-        var documents = await loadDocuments(tableController);
-        syncDocumentPolling(tableController, documents);
+        await reloadDocuments(tableController, {
+          page: 1
+        });
       }
     });
 
@@ -153,7 +222,11 @@
       try {
         await root.DocAuditApi.deleteAllUploads();
         stopDocumentPolling();
-        tableController.setDocuments([]);
+        tableController.setDocuments([], {
+          currentPage: 1,
+          pageSize: DOCUMENT_PAGE_SIZE,
+          totalDocuments: 0
+        });
       } catch (error) {
         console.error(error);
         root.alert(error && error.message ? error.message : "N\u00e3o foi poss\u00edvel limpar as notas.");
@@ -164,10 +237,9 @@
     });
 
     updateApiHealth(apiHealthIndicator, apiHealthCopy, uploadController);
-    loadDocuments(tableController)
-      .then(function (documents) {
-        syncDocumentPolling(tableController, documents);
-      })
+    reloadDocuments(tableController, {
+      page: 1
+    })
       .catch(function (error) {
         console.error(error);
       });

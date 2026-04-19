@@ -92,4 +92,7 @@ class DocumentoListItem(BaseModel):
 
 class DocumentoListResponse(BaseModel):
     total: int
+    limit: int
+    offset: int
+    has_more: bool
     items: list[DocumentoListItem]

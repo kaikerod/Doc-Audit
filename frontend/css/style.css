@@ -1464,7 +1464,42 @@ select:focus-visible,
 
 .pagination__actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.pagination__jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pagination__jump input {
+  width: 84px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 32, 34, 0.16);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.pagination__jump input:focus {
+  outline: none;
+  border-color: rgba(28, 103, 89, 0.42);
+  box-shadow: 0 0 0 3px rgba(28, 103, 89, 0.12);
+}
+
+.pagination__jump input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .detail-panel {

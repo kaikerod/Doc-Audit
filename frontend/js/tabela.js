@@ -123,7 +123,11 @@
   function createTableController(options) {
     var state = {
       documents: options.initialDocuments || [],
-      selectedDocumentId: null
+      selectedDocumentId: null,
+      currentPage: 1,
+      pageSize: Number.isFinite(options.pageSize) ? options.pageSize : 10,
+      totalDocuments: 0,
+      loading: false
     };
 
     var elements = {
@@ -145,16 +149,7 @@
         layout: options.dashboardGrid
       }
     };
-
-    var ITEMS_PER_PAGE = 10;
-
-    function getVisibleDocuments() {
-      return root.DocAuditUiLogic.filterDocuments(state.documents, {
-        query: elements.searchInput.value,
-        status: elements.statusFilter.value,
-        severity: elements.severityFilter.value
-      });
-    }
+    var emptyStateMessage = elements.emptyState ? elements.emptyState.textContent : "";
 
     function updateClearAllVisibility() {
       if (elements.clearAllCluster) {
@@ -162,8 +157,36 @@
       }
     }
 
+    function getTotalPages() {
+      return Math.max(1, Math.ceil(state.totalDocuments / state.pageSize));
+    }
+
+    function clampPage(page) {
+      var parsedPage = parseInt(page, 10);
+      if (!Number.isFinite(parsedPage)) {
+        return state.currentPage;
+      }
+
+      return Math.min(getTotalPages(), Math.max(1, parsedPage));
+    }
+
+    function updateEmptyState(visibleDocuments) {
+      if (!elements.emptyState) {
+        return;
+      }
+
+      if (state.loading && visibleDocuments.length === 0) {
+        elements.emptyState.textContent = "Carregando documentos...";
+        elements.emptyState.hidden = false;
+        return;
+      }
+
+      elements.emptyState.textContent = emptyStateMessage;
+      elements.emptyState.hidden = visibleDocuments.length !== 0;
+    }
+
     function render() {
-      var visibleDocuments = getVisibleDocuments();
+      var visibleDocuments = state.documents.slice();
       var stats = root.DocAuditUiLogic.buildDashboardStats(visibleDocuments);
 
       elements.stats.total.textContent = stats.total;
@@ -173,17 +196,9 @@
 
       updateClearAllVisibility();
 
-      elements.emptyState.hidden = visibleDocuments.length !== 0;
+      updateEmptyState(visibleDocuments);
 
-      var totalPages = Math.max(1, Math.ceil(visibleDocuments.length / ITEMS_PER_PAGE));
-      if (!state.currentPage || state.currentPage > totalPages) {
-        state.currentPage = 1;
-      }
-      
-      var startIndex = (state.currentPage - 1) * ITEMS_PER_PAGE;
-      var paginatedDocuments = visibleDocuments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-      elements.body.innerHTML = paginatedDocuments
+      elements.body.innerHTML = visibleDocuments
         .map(function (document) {
           var statusMeta = root.DocAuditUiLogic.getStatusMeta(document.status, document.flags);
           var isSelected = document.id === state.selectedDocumentId;
@@ -229,24 +244,31 @@
         })
         .join("");
 
-      if (!paginatedDocuments.length) {
+      if (!visibleDocuments.length) {
         elements.body.innerHTML = "";
       }
 
       if (elements.paginationContainer) {
-        if (visibleDocuments.length <= ITEMS_PER_PAGE) {
+        var totalPages = getTotalPages();
+        if (state.totalDocuments <= state.pageSize) {
           elements.paginationContainer.innerHTML = "";
           elements.paginationContainer.hidden = true;
         } else {
-          var prevDisabled = state.currentPage <= 1 ? "disabled" : "";
-          var nextDisabled = state.currentPage >= totalPages ? "disabled" : "";
-          
-          elements.paginationContainer.innerHTML = 
+          var prevDisabled = state.loading || state.currentPage <= 1 ? "disabled" : "";
+          var nextDisabled = state.loading || state.currentPage >= totalPages ? "disabled" : "";
+          var jumpDisabled = state.loading ? "disabled" : "";
+
+          elements.paginationContainer.innerHTML =
             '<div class="pagination">' +
-              '<span class="pagination__info">P\u00e1gina ' + state.currentPage + ' de ' + totalPages + ' (' + visibleDocuments.length + ' notas)</span>' +
+              '<span class="pagination__info">P\u00e1gina ' + state.currentPage + ' de ' + totalPages + ' (' + state.totalDocuments + ' notas)</span>' +
               '<div class="pagination__actions">' +
                 '<button type="button" class="button button--ghost" data-page="' + (state.currentPage - 1) + '" ' + prevDisabled + '>Anterior</button>' +
                 '<button type="button" class="button button--ghost" data-page="' + (state.currentPage + 1) + '" ' + nextDisabled + '>Pr\u00f3xima</button>' +
+                '<label class="pagination__jump">' +
+                  '<span>Ir para</span>' +
+                  '<input type="number" min="1" max="' + totalPages + '" value="' + state.currentPage + '" data-page-input ' + jumpDisabled + ' />' +
+                  '<button type="button" class="button button--ghost" data-page-jump ' + jumpDisabled + '>Ir</button>' +
+                '</label>' +
               '</div>' +
             '</div>';
           elements.paginationContainer.hidden = false;
@@ -261,14 +283,32 @@
 
     function prependDocuments(documents) {
       state.documents = documents.concat(state.documents);
+      state.totalDocuments = Math.max(state.totalDocuments, state.documents.length);
+      state.currentPage = 1;
       if (!state.selectedDocumentId && documents.length) {
         state.selectedDocumentId = documents[0].id;
       }
       render();
     }
 
-    function setDocuments(documents) {
+    function setDocuments(documents, pagination) {
       state.documents = Array.isArray(documents) ? documents : [];
+      state.loading = false;
+
+      if (pagination && Number.isFinite(pagination.currentPage)) {
+        state.currentPage = Math.max(1, Math.floor(pagination.currentPage));
+      }
+
+      if (pagination && Number.isFinite(pagination.pageSize)) {
+        state.pageSize = Math.max(1, Math.floor(pagination.pageSize));
+      }
+
+      if (pagination && Number.isFinite(pagination.totalDocuments)) {
+        state.totalDocuments = Math.max(0, Math.floor(pagination.totalDocuments));
+      } else {
+        state.totalDocuments = state.documents.length;
+      }
+
       if (
         state.selectedDocumentId &&
         !state.documents.some(function (document) {
@@ -280,14 +320,24 @@
       render();
     }
 
+    function setLoading(isLoading) {
+      state.loading = Boolean(isLoading);
+      render();
+    }
+
     function getDocuments() {
       return state.documents.slice();
+    }
+
+    function getCurrentPage() {
+      return state.currentPage;
     }
 
     function removeDocumentByUploadId(uploadId) {
       state.documents = state.documents.filter(function (document) {
         return document.uploadId !== uploadId;
       });
+      state.totalDocuments = Math.max(0, state.totalDocuments - 1);
 
       if (
         state.selectedDocumentId &&
@@ -330,14 +380,36 @@
     }
 
     function bindEvents() {
-      [elements.searchInput, elements.statusFilter, elements.severityFilter].forEach(function (element) {
-        element.addEventListener("input", function() {
-          state.currentPage = 1;
-          render();
-        });
+      var searchDebounceId = null;
+
+      if (elements.searchInput) {
+        var triggerSearchRefresh = function () {
+          if (searchDebounceId) {
+            root.clearTimeout(searchDebounceId);
+          }
+
+          searchDebounceId = root.setTimeout(function () {
+            state.currentPage = 1;
+            if (typeof options.onFiltersChange === "function") {
+              options.onFiltersChange();
+            }
+          }, 250);
+        };
+
+        elements.searchInput.addEventListener("input", triggerSearchRefresh);
+        elements.searchInput.addEventListener("change", triggerSearchRefresh);
+      }
+
+      [elements.statusFilter, elements.severityFilter].forEach(function (element) {
+        if (!element) {
+          return;
+        }
+
         element.addEventListener("change", function() {
           state.currentPage = 1;
-          render();
+          if (typeof options.onFiltersChange === "function") {
+            options.onFiltersChange();
+          }
         });
       });
 
@@ -385,12 +457,33 @@
         elements.paginationContainer.addEventListener("click", function(event) {
           var btn = event.target.closest("button[data-page]");
           if (btn && !btn.disabled) {
-            state.currentPage = parseInt(btn.dataset.page, 10);
-            render();
-            if (elements.layout) {
-              elements.layout.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var nextPage = parseInt(btn.dataset.page, 10);
+            if (Number.isFinite(nextPage) && typeof options.onPageChange === "function") {
+              options.onPageChange(clampPage(nextPage));
+            }
+            return;
+          }
+
+          var jumpButton = event.target.closest("button[data-page-jump]");
+          if (jumpButton && !jumpButton.disabled) {
+            var pageInput = elements.paginationContainer.querySelector("[data-page-input]");
+            if (pageInput && typeof options.onPageChange === "function") {
+              options.onPageChange(clampPage(pageInput.value));
             }
           }
+        });
+
+        elements.paginationContainer.addEventListener("keydown", function(event) {
+          if (event.key !== "Enter") {
+            return;
+          }
+
+          var pageInput = event.target.closest("[data-page-input]");
+          if (!pageInput || pageInput.disabled || typeof options.onPageChange !== "function") {
+            return;
+          }
+
+          options.onPageChange(clampPage(pageInput.value));
         });
       }
     }
@@ -400,9 +493,12 @@
 
     return {
       clearSelection: clearSelection,
+      getTotalPages: getTotalPages,
+      getCurrentPage: getCurrentPage,
       getDocuments: getDocuments,
       prependDocuments: prependDocuments,
       removeDocumentByUploadId: removeDocumentByUploadId,
+      setLoading: setLoading,
       render: render,
       setDocuments: setDocuments
     };
