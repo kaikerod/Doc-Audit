@@ -72,6 +72,21 @@ def test_resolve_database_url_uses_vercel_postgres_url_when_database_url_missing
     )
 
 
+def test_normalize_database_url_strips_supabase_query_params_for_psycopg(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "_is_running_in_container", lambda: False)
+
+    normalized_url = config._normalize_database_url(
+        "postgres://user:pass@aws-1-sa-east-1.pooler.supabase.com:6543/postgres"
+        "?sslmode=require&supa=base-pooler.x"
+    )
+    parsed_url = config.make_url(normalized_url)
+
+    assert parsed_url.drivername == "postgresql+psycopg"
+    assert parsed_url.query == {"sslmode": "require"}
+
+
 def test_resolve_database_url_uses_local_postgres_default_outside_tests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -160,11 +175,22 @@ def test_resolve_processing_mode_defaults_to_queue_outside_vercel(
     assert config._resolve_processing_mode() == "queue"
 
 
-def test_resolve_processing_mode_defaults_to_sync_on_vercel(
+def test_resolve_processing_mode_defaults_to_queue_on_vercel_when_redis_is_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
     monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("REDIS_URL", "rediss://default:test@redis.example.com:6379")
+
+    assert config._resolve_processing_mode() == "queue"
+
+
+def test_resolve_processing_mode_defaults_to_sync_on_vercel_without_redis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("REDIS_URL", raising=False)
 
     assert config._resolve_processing_mode() == "sync"
 

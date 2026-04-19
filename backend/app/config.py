@@ -18,6 +18,7 @@ VERCEL_DATABASE_URL_ENV_NAMES = (
     "POSTGRES_URL_NON_POOLING",
     "POSTGRES_PRISMA_URL",
 )
+PSYCOPG_UNSUPPORTED_POSTGRES_QUERY_KEYS = frozenset({"supa"})
 
 
 def _strip_env_value(raw_value: str) -> str:
@@ -125,6 +126,8 @@ def _resolve_processing_mode() -> str:
         return configured_mode
 
     if _is_vercel_environment():
+        if os.getenv("REDIS_URL", "").strip():
+            return "queue"
         return "sync"
 
     return "queue"
@@ -139,6 +142,21 @@ def _normalize_postgres_driver(parsed_url):
     return parsed_url
 
 
+def _strip_unsupported_postgres_query_params(parsed_url):
+    if not parsed_url.drivername.startswith("postgresql"):
+        return parsed_url
+
+    unsupported_keys = tuple(
+        key
+        for key in PSYCOPG_UNSUPPORTED_POSTGRES_QUERY_KEYS
+        if key in parsed_url.query
+    )
+    if not unsupported_keys:
+        return parsed_url
+
+    return parsed_url.difference_update_query(unsupported_keys)
+
+
 def _normalize_database_url(database_url: str) -> str:
     normalized_url = database_url.strip()
     if not normalized_url or _is_running_in_container():
@@ -150,6 +168,7 @@ def _normalize_database_url(database_url: str) -> str:
         return normalized_url
 
     parsed_url = _normalize_postgres_driver(parsed_url)
+    parsed_url = _strip_unsupported_postgres_query_params(parsed_url)
 
     if parsed_url.host != DOCKER_DATABASE_HOST:
         return parsed_url.render_as_string(hide_password=False)
