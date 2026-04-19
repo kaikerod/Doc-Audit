@@ -17,16 +17,11 @@ from ..services.document_processing_service import (
     TxtDecodingError,
     build_failed_upload_bundle,
     build_processed_upload_bundle,
-    build_pending_upload_bundle,
     cleanup_failed_uploads,
-    cleanup_pending_uploads,
     cleanup_processed_uploads,
     persist_failed_uploads,
     persist_processed_uploads,
-    persist_pending_uploads,
 )
-from ..services.queue_service import enqueue_upload_processing
-from ..services.upload_queue_payload_service import delete_staged_upload_content, stage_upload_content
 from ..services.upload_service import UploadNotFoundError, delete_all_uploads, delete_upload
 
 router = APIRouter(prefix=f"{settings.api_v1_prefix}/uploads", tags=["uploads"])
@@ -58,10 +53,6 @@ def _validate_upload_content(content: bytes) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Arquivo excede o limite de {settings.upload_max_size_bytes} bytes.",
         )
-
-
-def _should_stage_upload_content_in_redis() -> bool:
-    return settings.is_vercel and settings.processing_mode == "queue"
 
 
 def _extract_txt_files_from_zip(content: bytes) -> list[tuple[str, bytes]]:
@@ -222,7 +213,7 @@ def _handle_sync_upload(
         "tamanho antes de seguir para processamento."
     ),
 )
-async def create_uploads(
+def create_uploads(
     request: Request,
     files: list[UploadFile] = File(...),
     db: DbSession = Depends(get_db),
@@ -236,13 +227,13 @@ async def create_uploads(
 
     for uploaded_file in files:
         original_name = Path(uploaded_file.filename or "").name
-        content = await uploaded_file.read()
+        content = uploaded_file.file.read()
 
         validated_files.extend(_expand_upload_file(original_name, content))
         _validate_upload_count(len(validated_files))
 
     for original_name, content in validated_files:
-        if settings.processing_mode == "sync":
+        try:
             persisted_uploads.append(
                 _handle_sync_upload(
                     db=db,
@@ -252,44 +243,6 @@ async def create_uploads(
                     request_ip=request_ip,
                 )
             )
-            continue
-
-        try:
-            pending_upload = build_pending_upload_bundle(
-                original_name=original_name,
-                content=content,
-                storage_dir=storage_dir,
-            )
-            try:
-                persist_pending_uploads(db, [pending_upload])
-            except Exception:
-                db.rollback()
-                cleanup_pending_uploads([pending_upload])
-                raise
-
-            try:
-                if _should_stage_upload_content_in_redis():
-                    stage_upload_content(pending_upload.upload.id, content)
-                enqueue_upload_processing(pending_upload.upload.id)
-            except Exception as exc:
-                db.rollback()
-                pending_upload.upload.status = "erro"
-                log_audit_event(
-                    db,
-                    evento="processamento_erro",
-                    entidade_tipo="upload",
-                    entidade_id=str(pending_upload.upload.id),
-                    ip=request_ip,
-                    payload={
-                        "upload_id": str(pending_upload.upload.id),
-                        "arquivo": pending_upload.upload.nome_arquivo,
-                        "erro": f"Falha ao enfileirar processamento: {exc}",
-                    },
-                )
-                delete_staged_upload_content(pending_upload.upload.id)
-                db.refresh(pending_upload.upload)
-
-            persisted_uploads.append(pending_upload.upload)
         except TxtDecodingError as exc:
             db.rollback()
             persisted_uploads.append(

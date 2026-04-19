@@ -1,647 +1,96 @@
-<div align="center">
+# DocAudit
 
-# 🔍 DocAudit
-
-**Sistema de Análise e Auditoria de Documentos Fiscais com IA**  
-**AI-Powered Fiscal Document Analysis and Audit System**
-
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-316192?style=flat-square&logo=postgresql&logoColor=white)](https://postgresql.org)
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
-
----
-
-🇧🇷 [Português](#-português) &nbsp;|&nbsp; 🇺🇸 [English](#-english)
-
-</div>
-
----
-
-# 🇧🇷 Português
+Sistema web para análise automatizada de documentos fiscais e financeiros. O upload de arquivos `.txt` é validado, processado de forma síncrona com OpenRouter e persistido em PostgreSQL com trilha de auditoria.
 
 ## Visão Geral
 
-**DocAudit** é uma aplicação web interna para **análise automatizada de documentos fiscais e financeiros**. O sistema recebe arquivos `.txt` via upload, extrai campos estruturados com auxílio de IA (via [OpenRouter](https://openrouter.ai)), detecta anomalias automaticamente e apresenta os resultados em uma interface tabular com flags visuais — tudo rastreável por um log de auditoria exportável.
+O fluxo atual é direto:
 
-### O problema que resolve
+1. Usuário envia um ou mais arquivos `.txt`.
+2. A API valida extensão, tamanho e conteúdo.
+3. O arquivo é processado na própria request.
+4. A IA extrai campos estruturados.
+5. As regras de anomalia são aplicadas.
+6. O documento e o log de auditoria são persistidos.
+7. O frontend lê os resultados via `/api/v1/documentos`.
 
-Processos manuais de conferência de notas fiscais, aprovações e pagamentos são lentos, propensos a erros humanos e difíceis de auditar. O DocAudit automatiza essa conferência, detecta inconsistências em segundos e mantém um rastro auditável de todas as análises realizadas.
+## Stack
 
-### Público-alvo
+- FastAPI
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- OpenRouter
+- openpyxl
+- pandas
+- Vanilla JavaScript
 
-Equipes financeiras, de compliance e auditoria interna de pequenas e médias empresas.
+## Estrutura
 
----
-
-## ✨ Funcionalidades
-
-| Módulo | Descrição |
-|--------|-----------|
-| 📤 **Upload de Arquivos** | Drag-and-drop ou seleção manual de até 250 arquivos `.txt` por vez, com barra de progresso individual |
-| 🤖 **Extração via IA** | Campos extraídos automaticamente (NF, CNPJ, datas, valor, aprovador) via OpenRouter |
-| 🚨 **Detecção de Anomalias** | 8 regras de negócio com severidade CRÍTICA, ALTA e MÉDIA |
-| 📊 **Dashboard de Resultados** | Tabela filtrável, pesquisável e com badges coloridos por severidade de flag |
-| 📁 **Exportação** | CSV (UTF-8 com BOM) e Excel (.xlsx) com formatação e aba de auditoria |
-| 📋 **Log de Auditoria** | 100% das ações registradas com timestamp, IP, usuário e payload |
-| ⚙️ **Configurações** | Gerenciamento de aprovadores autorizados e fornecedores cadastrados |
-
----
-
-## 🚩 Regras de Detecção de Anomalias
-
-| Código | Anomalia | Severidade | Lógica |
-|--------|----------|------------|--------|
-| `DUP_NF` | NF duplicada | 🔴 CRÍTICA | Mesmo número de NF já existe para o mesmo CNPJ emitente |
-| `CNPJ_DIV` | CNPJ divergente | 🔴 CRÍTICA | CNPJ do emitente não bate com o cadastro interno do fornecedor |
-| `DATA_INV` | Data inválida | 🟡 ALTA | Data de emissão da NF é posterior à data de pagamento |
-| `APROV_NR` | Aprovador não reconhecido | 🟡 ALTA | Nome do aprovador não consta na lista de aprovadores autorizados |
-| `VALOR_ZERO` | Valor zerado | 🟡 ALTA | Valor total da NF é zero ou negativo |
-| `NF_FUTURA` | NF com data futura | 🟠 MÉDIA | Data de emissão da NF é posterior à data atual |
-| `CNPJ_INVALIDO` | CNPJ inválido | 🟠 MÉDIA | CNPJ não passa na validação de dígitos verificadores |
-| `CAMPO_VAZIO` | Campo obrigatório ausente | 🟠 MÉDIA | Campos críticos não foram extraídos (NF, CNPJ, valor, data) |
-
----
-
-## 🛠️ Stack Tecnológica
-
-### Backend
-- **Python 3.11+** — linguagem principal
-- **FastAPI** — framework REST assíncrono
-- **SQLAlchemy 2.0** — ORM
-- **Alembic** — migrations de banco de dados
-- **PostgreSQL 16** — banco de dados relacional
-- **Celery + Redis** — processamento assíncrono (fila de tarefas)
-- **OpenRouter API** — integração com modelos de IA
-- **openpyxl / pandas** — geração de relatórios
-- **Pydantic v2** — validação e serialização de dados
-- **httpx** — cliente HTTP assíncrono
-
-### Frontend
-- **HTML5 + CSS3 + JavaScript puro** — sem frameworks, responsivo e minimalista
-
-### Infraestrutura
-- **Docker + Docker Compose** — orquestração local
-- **`.env`** — gerenciamento de segredos
-
----
-
-## 📁 Estrutura do Projeto
-
-```
-docaudit/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # Entrypoint FastAPI
-│   │   ├── config.py            # Configurações via Pydantic Settings
-│   │   ├── database.py          # Configuração do SQLAlchemy
-│   │   ├── models/              # Modelos SQLAlchemy
-│   │   │   ├── upload.py
-│   │   │   ├── documento.py
-│   │   │   ├── anomalia.py
-│   │   │   └── audit_log.py
-│   │   ├── schemas/             # Schemas Pydantic (request/response)
-│   │   │   ├── upload.py
-│   │   │   ├── documento.py
-│   │   │   └── anomalia.py
-│   │   ├── routers/             # Endpoints da API
-│   │   │   ├── uploads.py
-│   │   │   ├── documentos.py
-│   │   │   ├── anomalias.py
-│   │   │   └── exportar.py
-│   │   ├── services/            # Lógica de negócio
-│   │   │   ├── ia_service.py        # Integração OpenRouter
-│   │   │   ├── anomalia_service.py  # Motor de regras de anomalia
-│   │   │   ├── export_service.py    # Geração de CSV e Excel
-│   │   │   └── audit_service.py     # Log de auditoria
-│   │   └── workers/
-│   │       └── tasks.py             # Tarefas Celery (processamento assíncrono)
-│   ├── alembic/                 # Migrations do banco de dados
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── index.html               # Dashboard principal
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       ├── app.js               # Inicialização e estado global
-│       ├── upload.js            # Lógica de upload e drag-and-drop
-│       ├── tabela.js            # Renderização e filtros da tabela
-│       └── api.js               # Comunicação com o backend
-├── tests/                       # Testes backend (pytest)
-├── docker-compose.yml
-├── .env.example
-└── PRD.md                       # Documento de requisitos do produto
+```text
+backend/
+  app/
+    main.py
+    config.py
+    database.py
+    models/
+    routers/
+    schemas/
+    services/
+frontend/
+  index.html
+  css/
+  js/
+tests/
+PRD.md
 ```
 
----
-
-## 🚀 Como Rodar Localmente
-
-### Pré-requisitos
-
-- [Docker](https://www.docker.com/get-started) e Docker Compose
-- [Git](https://git-scm.com/)
-- Chave de API do [OpenRouter](https://openrouter.ai/) (gratuita)
-
-### 1. Clone o repositório
-
-```bash
-git clone https://github.com/seu-usuario/docaudit.git
-cd docaudit
-```
-
-### 2. Configure as variáveis de ambiente
+## Como rodar localmente
 
 ```bash
 cp .env.example .env
-```
-
-Edite o arquivo `.env` e preencha:
-
-```env
-OPENROUTER_API_KEY=sk-or-v1-sua-chave-aqui
-OPENROUTER_MODEL=mistralai/ministral-3b-2512   # ou outro modelo disponível
-OPENROUTER_REFERER=http://localhost:8000     # URL da sua aplicação
-```
-
-### 3. Suba os serviços com Docker Compose
-
-```bash
 docker compose up --build
-```
-
-Isso irá iniciar:
-- **FastAPI** em `http://localhost:8000`
-- **PostgreSQL** em `localhost:5432`
-- **Redis** em `localhost:6379`
-
-### 4. Aplique as migrations do banco de dados
-
-```bash
 docker compose exec web alembic upgrade head
 ```
 
-### 5. Acesse a aplicação
+## Endpoints principais
 
-| Serviço | URL |
-|---------|-----|
-| Frontend (Dashboard) | `http://localhost:8000` |
-| API Docs (Swagger) | `http://localhost:8000/docs` |
-| API Docs (ReDoc) | `http://localhost:8000/redoc` |
-| Health Check | `http://localhost:8000/api/v1/health` |
-
----
-
-## 📖 Documentação da API (Swagger)
-
-A API do DocAudit é totalmente documentada via **Swagger/OpenAPI**. Você pode acessar a documentação interativa para testar os endpoints diretamente pelo navegador:
-
-- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) — Interface interativa (recomendado).
-- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc) — Documentação estática e detalhada.
-
----
-
-## 🌐 Endpoints da API
-
-### Uploads
 | Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/api/v1/uploads` | Envia um ou mais arquivos `.txt` |
-| `GET` | `/api/v1/uploads` | Lista todos os uploads (paginado) |
-| `GET` | `/api/v1/uploads/{id}` | Detalhes de um upload específico |
-
-### Documentos
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/api/v1/documentos` | Lista documentos analisados (filtros, paginação) |
-| `GET` | `/api/v1/documentos/{id}` | Detalhes completos de um documento |
-| `PATCH` | `/api/v1/documentos/{id}` | Revisão manual de campos extraídos |
-
-### Anomalias
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/api/v1/anomalias` | Lista anomalias (filtro por severidade/status) |
-| `PATCH` | `/api/v1/anomalias/{id}/resolver` | Marca uma anomalia como resolvida |
-
-### Exportação
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/api/v1/exportar/csv` | Exporta resultados em CSV |
-| `GET` | `/api/v1/exportar/excel` | Exporta resultados em Excel (.xlsx) |
+|---|---|---|
+| `POST` | `/api/v1/uploads` | Envia arquivos `.txt` |
+| `GET` | `/api/v1/uploads` | Lista uploads |
+| `GET` | `/api/v1/uploads/{id}` | Detalha um upload |
+| `GET` | `/api/v1/documentos` | Lista documentos processados |
+| `GET` | `/api/v1/documentos/{id}` | Detalha um documento |
+| `GET` | `/api/v1/anomalias` | Lista anomalias |
+| `PATCH` | `/api/v1/anomalias/{id}/resolver` | Resolve uma anomalia |
+| `GET` | `/api/v1/exportar/csv` | Exporta CSV |
+| `GET` | `/api/v1/exportar/excel` | Exporta Excel |
 | `GET` | `/api/v1/exportar/log` | Exporta o log de auditoria |
+| `GET` | `/api/v1/health` | Status da aplicação |
 
-### Configuração
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET/POST` | `/api/v1/aprovadores` | Gerencia aprovadores autorizados |
-| `GET/POST` | `/api/v1/fornecedores` | Gerencia fornecedores (CNPJ) |
-| `GET` | `/api/v1/health` | Status da aplicação e dependências |
+## Variáveis de ambiente
 
-> Na Vercel, `DATABASE_URL` ou um dos env vars do Vercel Postgres são obrigatórios. Sem banco persistente, a inicialização falha para evitar perda de dados.
+| Variável | Descrição |
+|---|---|
+| `DATABASE_URL` | String de conexão do banco |
+| `OPENROUTER_API_KEY` | Chave da OpenRouter |
+| `OPENROUTER_MODEL` | Modelo usado na extração |
+| `OPENROUTER_REFERER` | Referer enviado à OpenRouter |
+| `OPENROUTER_TITLE` | Título enviado à OpenRouter |
+| `UPLOAD_MAX_FILES` | Máximo de arquivos por envio |
+| `DOC_AUDIT_AUTO_CREATE_SCHEMA` | Criação automática do schema no startup |
+| `APP_NAME` | Nome da aplicação |
+| `APP_VERSION` | Versão da aplicação |
 
-> Quando `DOC_AUDIT_PROCESSING_MODE=queue` roda na Vercel, o conteudo bruto do upload fica em staging temporario no Redis para que o worker externo nao dependa do filesystem efemero da function.
+Na Vercel, use `DOC_AUDIT_PROCESSING_MODE=sync` e mantenha `DOC_AUDIT_AUTO_CREATE_SCHEMA=false`.
 
-> Na Vercel, `DOC_AUDIT_AUTO_CREATE_SCHEMA` deve permanecer `false` para evitar DDL no startup da function. O schema do banco deve ser preparado por migration ou processo externo.
-
-### Observabilidade
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/api/v1/observability/load-validation` | Snapshot de fila Redis, tasks ativas e resumo dos eventos recentes para validação de carga |
-
----
-
-## 🔄 Fluxo de Processamento
-
-```
-Usuário faz upload do TXT
-        ↓
-FastAPI valida (extensão, tamanho, conteúdo)
-        ↓
-Salva arquivo + registra no banco (status: pendente)
-        ↓
-Enfileira tarefa no Celery via Redis
-        ↓
-Worker Celery processa:
-  1. Lê conteúdo do arquivo
-  2. Monta prompt → chama OpenRouter API
-  3. Faz parse do JSON retornado pela IA
-  4. Salva campos extraídos no banco
-  5. Executa as 8 regras de anomalia
-  6. Salva flags geradas
-  7. Atualiza status do documento
-  8. Registra evento no audit_log
-        ↓
-Frontend consulta status via polling (GET /documentos)
-        ↓
-Exibe resultado na tabela com flags visuais
-```
-
----
-
-## 🧪 Testes
+## Testes
 
 ```bash
-# Rodar todos os testes
-pytest
-
-# Com verbose e cobertura
-pytest -v --tb=short
-
-# Rodar um arquivo específico
-pytest tests/test_anomalia_service.py
-
-# Disparar um lote reproduzível de validação de carga
-python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 --batches 2 --batch-size 10 --output load-validation-report.json
+python -m pytest
 ```
 
-Os testes ficam em `tests/` e seguem a convenção `test_<módulo>.py`.
-Durante o `pytest`, o projeto usa SQLite em memória para isolamento rápido; fora dos testes, o backend espera PostgreSQL.
+## Deploy na Vercel
 
----
-
-## ⚙️ Variáveis de Ambiente
-
-| Variável | Descrição | Padrão |
-|----------|-----------|--------|
-| `DATABASE_URL` | String de conexão do banco de dados | `postgresql+psycopg://...` |
-| `REDIS_URL` | URL do Redis | `redis://redis:6379/0` |
-| `OPENROUTER_API_KEY` | Chave da API OpenRouter | *(obrigatório)* |
-| `OPENROUTER_MODEL` | Modelo de IA a utilizar | `mistralai/ministral-3b-2512` |
-| `UPLOAD_MAX_FILES` | Quantidade máxima de arquivos `.txt` aceitos por envio | `250` |
-| `UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS` | TTL, em segundos, do staging temporario do upload no Redis | `86400` |
-| `DOC_AUDIT_AUTO_CREATE_SCHEMA` | Executa `create_all()` no startup da API | `true` local / `false` na Vercel |
-| `OPENROUTER_REFERER` | URL de referência para o OpenRouter | — |
-| `OPENROUTER_TITLE` | Título da aplicação no OpenRouter | `DocAudit` |
-| `CELERY_DEFAULT_QUEUE` | Nome da fila principal observada | `celery` |
-| `CELERY_OBSERVED_QUEUES` | Filas monitoradas no snapshot de carga | `celery` |
-| `CELERY_INSPECT_TIMEOUT_SECONDS` | Timeout do inspect dos workers Celery | `1.5` |
-| `OBSERVABILITY_EVENT_RETENTION` | Quantidade de eventos recentes mantidos para diagnóstico | `2000` |
-| `APP_NAME` | Nome da aplicação | `DocAudit` |
-| `APP_VERSION` | Versão da aplicação | `0.1.0` |
-| `POSTGRES_DB` | Nome do banco (Docker) | `docaudit` |
-| `POSTGRES_USER` | Usuário do banco (Docker) | `docaudit` |
-| `POSTGRES_PASSWORD` | Senha do banco (Docker) | `docaudit` |
-
-> ⚠️ **Nunca commite o arquivo `.env` com segredos reais.** Use sempre o `.env.example` como template.
-
----
-
-## 📄 Licença
-
-Distribuído sob a licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
-
----
-
-<br><br>
-
----
-
-# 🇺🇸 English
-
-## Overview
-
-**DocAudit** is an internal web application for **automated analysis of fiscal and financial documents**. The system receives `.txt` files via upload, extracts structured fields using AI (via [OpenRouter](https://openrouter.ai)), automatically detects anomalies, and presents results in a tabular interface with visual flags — all traceable through an exportable audit log.
-
-### The problem it solves
-
-Manual processes for reviewing invoices, approvals, and payments are slow, error-prone, and hard to audit. DocAudit automates this review, detects inconsistencies in seconds, and maintains an auditable trail of every analysis performed.
-
-### Target audience
-
-Finance, compliance, and internal audit teams at small and medium-sized businesses.
-
----
-
-## ✨ Features
-
-| Module | Description |
-|--------|-------------|
-| 📤 **File Upload** | Drag-and-drop or manual selection of up to 250 `.txt` files at a time, with per-file progress bars |
-| 🤖 **AI Extraction** | Fields extracted automatically (invoice number, CNPJ, dates, amount, approver) via OpenRouter |
-| 🚨 **Anomaly Detection** | 8 business rules with CRITICAL, HIGH, and MEDIUM severity levels |
-| 📊 **Results Dashboard** | Filterable, searchable table with colored severity badges |
-| 📁 **Export** | CSV (UTF-8 with BOM) and Excel (.xlsx) with formatting and a dedicated audit tab |
-| 📋 **Audit Log** | 100% of actions recorded with timestamp, IP, user, and payload |
-| ⚙️ **Settings** | Management of authorized approvers and registered suppliers |
-
----
-
-## 🚩 Anomaly Detection Rules
-
-| Code | Anomaly | Severity | Logic |
-|------|---------|----------|-------|
-| `DUP_NF` | Duplicate invoice | 🔴 CRITICAL | Same invoice number already exists for the same issuer CNPJ |
-| `CNPJ_DIV` | Divergent CNPJ | 🔴 CRITICAL | Issuer CNPJ does not match the internal supplier registry |
-| `DATA_INV` | Invalid date | 🟡 HIGH | Invoice issue date is later than the payment date |
-| `APROV_NR` | Unrecognized approver | 🟡 HIGH | Approver name is not in the authorized approvers list |
-| `VALOR_ZERO` | Zero value | 🟡 HIGH | Total invoice value is zero or negative |
-| `NF_FUTURA` | Future-dated invoice | 🟠 MEDIUM | Invoice issue date is later than today |
-| `CNPJ_INVALIDO` | Invalid CNPJ | 🟠 MEDIUM | CNPJ fails check-digit validation |
-| `CAMPO_VAZIO` | Missing required field | 🟠 MEDIUM | Critical fields were not extracted (NF, CNPJ, value, date) |
-
----
-
-## 🛠️ Technology Stack
-
-### Backend
-- **Python 3.11+** — primary language
-- **FastAPI** — async REST framework
-- **SQLAlchemy 2.0** — ORM
-- **Alembic** — database migrations
-- **PostgreSQL 16** — relational database
-- **Celery + Redis** — async task queue
-- **OpenRouter API** — AI model integration
-- **openpyxl / pandas** — report generation
-- **Pydantic v2** — data validation and serialization
-- **httpx** — async HTTP client
-
-### Frontend
-- **HTML5 + CSS3 + Vanilla JavaScript** — no frameworks, responsive and minimalist
-
-### Infrastructure
-- **Docker + Docker Compose** — local orchestration
-- **`.env`** — secrets management
-
----
-
-## 📁 Project Structure
-
-```
-docaudit/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI entrypoint
-│   │   ├── config.py            # Settings via Pydantic Settings
-│   │   ├── database.py          # SQLAlchemy configuration
-│   │   ├── models/              # SQLAlchemy models
-│   │   │   ├── upload.py
-│   │   │   ├── documento.py
-│   │   │   ├── anomalia.py
-│   │   │   └── audit_log.py
-│   │   ├── schemas/             # Pydantic schemas (request/response)
-│   │   │   ├── upload.py
-│   │   │   ├── documento.py
-│   │   │   └── anomalia.py
-│   │   ├── routers/             # API endpoints
-│   │   │   ├── uploads.py
-│   │   │   ├── documentos.py
-│   │   │   ├── anomalias.py
-│   │   │   └── exportar.py
-│   │   ├── services/            # Business logic
-│   │   │   ├── ia_service.py        # OpenRouter integration
-│   │   │   ├── anomalia_service.py  # Anomaly rules engine
-│   │   │   ├── export_service.py    # CSV and Excel generation
-│   │   │   └── audit_service.py     # Audit log
-│   │   └── workers/
-│   │       └── tasks.py             # Celery tasks (async processing)
-│   ├── alembic/                 # Database migrations
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── index.html               # Main dashboard
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       ├── app.js               # Initialization and global state
-│       ├── upload.js            # Upload and drag-and-drop logic
-│       ├── tabela.js            # Table rendering and filters
-│       └── api.js               # Backend communication
-├── tests/                       # Backend tests (pytest)
-├── docker-compose.yml
-├── .env.example
-└── PRD.md                       # Product Requirements Document
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- [Docker](https://www.docker.com/get-started) and Docker Compose
-- [Git](https://git-scm.com/)
-- An [OpenRouter](https://openrouter.ai/) API key (free tier available)
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/your-username/docaudit.git
-cd docaudit
-```
-
-### 2. Set up environment variables
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and fill in your values:
-
-```env
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-OPENROUTER_MODEL=mistralai/ministral-3b-2512   # or another available model
-OPENROUTER_REFERER=http://localhost:8000     # your application URL
-```
-
-### 3. Start services with Docker Compose
-
-```bash
-docker compose up --build
-```
-
-This will start:
-- **FastAPI** at `http://localhost:8000`
-- **PostgreSQL** at `localhost:5432`
-- **Redis** at `localhost:6379`
-
-### 4. Apply database migrations
-
-```bash
-docker compose exec web alembic upgrade head
-```
-
-### 5. Access the application
-
-| Service | URL |
-|---------|-----|
-| Frontend (Dashboard) | `http://localhost:8000` |
-| API Docs (Swagger UI) | `http://localhost:8000/docs` |
-| API Docs (ReDoc) | `http://localhost:8000/redoc` |
-| Health Check | `http://localhost:8000/api/v1/health` |
-
----
-
-## 📖 API Documentation (Swagger)
-
-DocAudit's API is fully documented via **Swagger/OpenAPI**. You can access the interactive documentation to test endpoints directly through your browser:
-
-- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs) — Interactive interface (recommended).
-- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc) — Detailed static documentation.
-
----
-
-## 🌐 API Endpoints
-
-### Uploads
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/api/v1/uploads` | Upload one or more `.txt` files |
-| `GET` | `/api/v1/uploads` | List all uploads (paginated) |
-| `GET` | `/api/v1/uploads/{id}` | Details of a specific upload |
-
-### Documents
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/v1/documentos` | List analyzed documents (filters, pagination) |
-| `GET` | `/api/v1/documentos/{id}` | Full details of a document |
-| `PATCH` | `/api/v1/documentos/{id}` | Manually review extracted fields |
-
-### Anomalies
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/v1/anomalias` | List anomalies (filter by severity/status) |
-| `PATCH` | `/api/v1/anomalias/{id}/resolver` | Mark an anomaly as resolved |
-
-### Export
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/v1/exportar/csv` | Export results as CSV |
-| `GET` | `/api/v1/exportar/excel` | Export results as Excel (.xlsx) |
-| `GET` | `/api/v1/exportar/log` | Export the audit log |
-
-### Configuration
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET/POST` | `/api/v1/aprovadores` | Manage authorized approvers |
-| `GET/POST` | `/api/v1/fornecedores` | Manage suppliers (CNPJ) |
-| `GET` | `/api/v1/health` | Application and dependency status |
-
-> On Vercel, `DATABASE_URL` or one of the Vercel Postgres env vars is required. Without a persistent database, startup fails to avoid data loss.
-
-### Observability
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/v1/observability/load-validation` | Snapshot of Redis queue depth, active tasks, and recent observability events for load validation |
-
----
-
-## 🔄 Processing Flow
-
-```
-User uploads a TXT file
-        ↓
-FastAPI validates (extension, size, content)
-        ↓
-Saves file + registers in DB (status: pending)
-        ↓
-Enqueues task in Celery via Redis
-        ↓
-Celery worker processes:
-  1. Reads file content
-  2. Builds prompt → calls OpenRouter API
-  3. Parses the JSON returned by AI
-  4. Saves extracted fields to DB
-  5. Runs all 8 anomaly rules
-  6. Saves generated flags
-  7. Updates document status
-  8. Logs event to audit_log
-        ↓
-Frontend polls status (GET /documentos)
-        ↓
-Displays results in table with visual flags
-```
-
----
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest
-
-# Verbose with short tracebacks
-pytest -v --tb=short
-
-# Run a specific test file
-pytest tests/test_anomalia_service.py
-
-# Trigger a reproducible load-validation batch
-python backend/scripts/run_load_validation.py --base-url http://127.0.0.1:8000 --batches 2 --batch-size 10 --output load-validation-report.json
-```
-
-Tests live in `tests/` and follow the `test_<module>.py` convention.
-During `pytest`, the project uses in-memory SQLite for fast isolation; outside tests, the backend expects PostgreSQL.
-
----
-
-## ⚙️ Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | Database connection string | `postgresql+psycopg://...` |
-| `REDIS_URL` | Redis URL | `redis://redis:6379/0` |
-| `OPENROUTER_API_KEY` | OpenRouter API key | *(required)* |
-| `OPENROUTER_MODEL` | AI model to use | `mistralai/ministral-3b-2512` |
-| `UPLOAD_MAX_FILES` | Maximum number of `.txt` files accepted per upload request | `250` |
-| `OPENROUTER_REFERER` | Referrer URL for OpenRouter | — |
-| `OPENROUTER_TITLE` | Application title in OpenRouter | `DocAudit` |
-| `CELERY_DEFAULT_QUEUE` | Primary queue name observed by diagnostics | `celery` |
-| `CELERY_OBSERVED_QUEUES` | Queues monitored by the load snapshot | `celery` |
-| `CELERY_INSPECT_TIMEOUT_SECONDS` | Timeout for Celery worker inspect calls | `1.5` |
-| `OBSERVABILITY_EVENT_RETENTION` | Number of recent events retained for diagnostics | `2000` |
-| `APP_NAME` | Application name | `DocAudit` |
-| `APP_VERSION` | Application version | `0.1.0` |
-| `POSTGRES_DB` | Database name (Docker) | `docaudit` |
-| `POSTGRES_USER` | Database user (Docker) | `docaudit` |
-| `POSTGRES_PASSWORD` | Database password (Docker) | `docaudit` |
-
-> ⚠️ **Never commit your `.env` file with real secrets.** Always use `.env.example` as the template.
-
----
-
-## 📄 License
-
-Distributed under the **MIT** License. See [LICENSE](LICENSE) for details.
+Veja [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md) para os detalhes de configuração e deploy.

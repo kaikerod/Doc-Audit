@@ -15,10 +15,8 @@ from .config import settings
 from .database import Base, engine
 from .routers.documentos import router as documentos_router
 from .routers.exportar import router as exportar_router
-from .routers.observability import router as observability_router
 from .routers.uploads import router as uploads_router
 from .services.ia_service import build_ai_health_check
-from .services.queue_service import build_queue_health_check
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 FAVICON_PATH = FRONTEND_DIR / "favicon.svg"
@@ -39,10 +37,6 @@ tags_metadata = [
     {
         "name": "health",
         "description": "Endpoints de monitoramento de integridade da API e banco de dados.",
-    },
-    {
-        "name": "observability",
-        "description": "Diagnosticos operacionais para fila, worker e validacao de carga.",
     },
     {
         "name": "meta",
@@ -75,7 +69,6 @@ app.add_middleware(
 app.include_router(uploads_router)
 app.include_router(documentos_router)
 app.include_router(exportar_router)
-app.include_router(observability_router)
 
 if FRONTEND_DIR.exists():
     app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="frontend-css")
@@ -124,7 +117,6 @@ def _build_health_features(*, uploads_enabled: bool) -> dict[str, object]:
 @app.get(f"{settings.api_v1_prefix}/health", tags=["health"])
 def readiness_check() -> JSONResponse:
     ai_status, uploads_enabled, ai_detail = build_ai_health_check()
-    queue_status, queue_enabled, queue_detail = build_queue_health_check()
 
     try:
         with engine.connect() as connection:
@@ -133,8 +125,6 @@ def readiness_check() -> JSONResponse:
         detail_parts = [str(exc)]
         if ai_detail:
             detail_parts.append(ai_detail)
-        if queue_detail:
-            detail_parts.append(queue_detail)
 
         return JSONResponse(
             status_code=503,
@@ -145,14 +135,12 @@ def readiness_check() -> JSONResponse:
                     "api": "ok",
                     "database": "error",
                     "ai": ai_status,
-                    "queue": queue_status,
                 },
                 "features": _build_health_features(uploads_enabled=False),
                 "detail": " ".join(detail_parts),
             },
         )
 
-    uploads_enabled = uploads_enabled and queue_enabled
     content = {
         "status": "ok" if uploads_enabled else "limited",
         "app": settings.app_name,
@@ -160,12 +148,11 @@ def readiness_check() -> JSONResponse:
             "api": "ok",
             "database": "ok",
             "ai": ai_status,
-            "queue": queue_status,
         },
         "features": _build_health_features(uploads_enabled=uploads_enabled),
     }
 
-    detail_parts = [detail for detail in (ai_detail, queue_detail) if detail]
+    detail_parts = [detail for detail in (ai_detail,) if detail]
     if detail_parts:
         content["detail"] = " ".join(detail_parts)
 

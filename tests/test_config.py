@@ -164,7 +164,7 @@ def test_load_dotenv_file_is_skipped_on_vercel(
     assert config.os.environ.get("OPENROUTER_API_KEY") is None
 
 
-def test_resolve_processing_mode_defaults_to_queue_outside_vercel(
+def test_resolve_processing_mode_defaults_to_sync_outside_vercel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
@@ -172,17 +172,17 @@ def test_resolve_processing_mode_defaults_to_queue_outside_vercel(
     monkeypatch.delenv("VERCEL_ENV", raising=False)
     monkeypatch.delenv("VERCEL_URL", raising=False)
 
-    assert config._resolve_processing_mode() == "queue"
+    assert config._resolve_processing_mode() == "sync"
 
 
-def test_resolve_processing_mode_defaults_to_queue_on_vercel_when_redis_is_configured(
+def test_resolve_processing_mode_defaults_to_sync_on_vercel_when_redis_is_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("DOC_AUDIT_PROCESSING_MODE", raising=False)
     monkeypatch.setenv("VERCEL", "1")
     monkeypatch.setenv("REDIS_URL", "rediss://default:test@redis.example.com:6379")
 
-    assert config._resolve_processing_mode() == "queue"
+    assert config._resolve_processing_mode() == "sync"
 
 
 def test_resolve_processing_mode_defaults_to_sync_on_vercel_without_redis(

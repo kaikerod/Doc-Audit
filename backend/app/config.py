@@ -1,6 +1,5 @@
 import os
 import sys
-from math import ceil
 from dataclasses import dataclass, field
 from pathlib import Path
 import tempfile
@@ -51,12 +50,6 @@ def _parse_csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
         return default
 
     return tuple(item.strip() for item in raw_value.split(",") if item.strip())
-
-
-def _parse_unique_csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
-    values = _parse_csv_env(name, default)
-    unique_values = tuple(dict.fromkeys(values))
-    return unique_values or default
 
 
 def _parse_float_env(name: str, default: float) -> float:
@@ -121,16 +114,7 @@ def _default_database_url() -> str:
 
 
 def _resolve_processing_mode() -> str:
-    configured_mode = os.getenv("DOC_AUDIT_PROCESSING_MODE", "").strip().lower()
-    if configured_mode in {"queue", "sync"}:
-        return configured_mode
-
-    if _is_vercel_environment():
-        if os.getenv("REDIS_URL", "").strip():
-            return "queue"
-        return "sync"
-
-    return "queue"
+    return "sync"
 
 
 _load_dotenv_file()
@@ -208,38 +192,6 @@ def _parse_positive_int_env(name: str, default: int) -> int:
     return _coerce_positive_int(_parse_int_env(name, default))
 
 
-def _default_celery_task_soft_time_limit_seconds() -> int:
-    request_budget_seconds = (
-        _parse_positive_float_env(
-            "OPENROUTER_CONNECT_TIMEOUT_SECONDS",
-            DEFAULT_OPENROUTER_CONNECT_TIMEOUT_SECONDS,
-        )
-        + _parse_positive_float_env(
-            "OPENROUTER_WRITE_TIMEOUT_SECONDS",
-            DEFAULT_OPENROUTER_WRITE_TIMEOUT_SECONDS,
-        )
-        + _parse_positive_float_env(
-            "OPENROUTER_READ_TIMEOUT_SECONDS",
-            DEFAULT_OPENROUTER_READ_TIMEOUT_SECONDS,
-        )
-        + _parse_positive_float_env(
-            "OPENROUTER_POOL_TIMEOUT_SECONDS",
-            DEFAULT_OPENROUTER_POOL_TIMEOUT_SECONDS,
-        )
-    )
-    default_soft_limit = max(1, int(ceil(request_budget_seconds + 5.0)))
-    return max(1, _parse_int_env("CELERY_TASK_SOFT_TIME_LIMIT_SECONDS", default_soft_limit))
-
-
-def _default_celery_task_time_limit_seconds() -> int:
-    soft_limit_seconds = _default_celery_task_soft_time_limit_seconds()
-    configured_time_limit = _parse_int_env(
-        "CELERY_TASK_TIME_LIMIT_SECONDS",
-        soft_limit_seconds + 5,
-    )
-    return max(soft_limit_seconds + 1, configured_time_limit)
-
-
 @dataclass(slots=True)
 class Settings:
     app_name: str = os.getenv("APP_NAME", "DocAudit")
@@ -250,10 +202,6 @@ class Settings:
     upload_dir: str = os.getenv("UPLOAD_DIR", _default_upload_dir())
     upload_max_size_bytes: int = int(os.getenv("UPLOAD_MAX_SIZE_BYTES", str(5 * 1024 * 1024)))
     upload_max_files: int = int(os.getenv("UPLOAD_MAX_FILES", "250"))
-    upload_queue_payload_ttl_seconds: int = _parse_positive_int_env(
-        "UPLOAD_QUEUE_PAYLOAD_TTL_SECONDS",
-        86400,
-    )
     auto_create_schema: bool = _parse_bool_env(
         "DOC_AUDIT_AUTO_CREATE_SCHEMA",
         not _is_vercel_environment(),
@@ -301,19 +249,6 @@ class Settings:
         "OPENROUTER_RATE_LIMIT_RETRY_SPREAD_SECONDS",
         1.0,
     )
-    celery_default_queue: str = os.getenv("CELERY_DEFAULT_QUEUE", "celery").strip() or "celery"
-    celery_observed_queues: tuple[str, ...] = field(
-        default_factory=lambda: _parse_unique_csv_env(
-            "CELERY_OBSERVED_QUEUES",
-            (os.getenv("CELERY_DEFAULT_QUEUE", "celery").strip() or "celery",),
-        )
-    )
-    celery_inspect_timeout_seconds: float = _parse_positive_float_env(
-        "CELERY_INSPECT_TIMEOUT_SECONDS",
-        1.5,
-    )
-    celery_task_soft_time_limit_seconds: int = _default_celery_task_soft_time_limit_seconds()
-    celery_task_time_limit_seconds: int = _default_celery_task_time_limit_seconds()
     observability_event_retention: int = _parse_positive_int_env(
         "OBSERVABILITY_EVENT_RETENTION",
         2000,

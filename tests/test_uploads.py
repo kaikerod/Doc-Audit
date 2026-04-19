@@ -34,6 +34,19 @@ def build_zip_payload(files: dict[str, bytes]) -> bytes:
     return buffer.getvalue()
 
 
+def build_extraction_result() -> DocumentExtractionResult:
+    return DocumentExtractionResult(
+        numero_nf="NF-2026-001",
+        cnpj_emitente="11.222.333/0001-81",
+        cnpj_destinatario="22.333.444/0001-55",
+        data_emissao=date(2026, 4, 10),
+        data_pagamento=date(2026, 4, 11),
+        valor_total=Decimal("321.45"),
+        aprovador="Maria Silva",
+        descricao="Servico de auditoria",
+    )
+
+
 def test_upload_txt_valido_returns_200(
     db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -41,7 +54,10 @@ def test_upload_txt_valido_returns_200(
     app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
     monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
 
-    with patch("backend.app.routers.uploads.enqueue_upload_processing", return_value="task-1") as enqueue_mock:
+    with patch(
+        "backend.app.services.document_processing_service.extract_document_data",
+        return_value=build_extraction_result(),
+    ):
         try:
             with TestClient(app) as client:
                 response = client.post(
@@ -55,47 +71,21 @@ def test_upload_txt_valido_returns_200(
     response_data = response.json()
     assert len(response_data["items"]) == 1
     assert response_data["items"][0]["nome_arquivo"] == "nota-fiscal.txt"
-    assert response_data["items"][0]["status"] == "pendente"
+    assert response_data["items"][0]["status"] == "concluido"
 
     saved_upload = db_session.scalar(select(Upload))
     assert saved_upload is not None
     assert saved_upload.nome_arquivo == "nota-fiscal.txt"
-    assert saved_upload.status == "pendente"
+    assert saved_upload.status == "concluido"
     assert saved_upload.tamanho_bytes == len(b"conteudo de teste")
     assert saved_upload.caminho_arquivo.endswith(".txt")
-    assert db_session.scalar(select(Documento)) is None
-    enqueue_mock.assert_called_once_with(saved_upload.id)
+    saved_documento = db_session.scalar(select(Documento))
+    assert saved_documento is not None
+    assert saved_documento.numero_nf == "NF-2026-001"
+    assert saved_documento.status_extracao == "concluido"
 
 
-def test_upload_stages_content_in_redis_for_vercel_queue(
-    db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    app.dependency_overrides[get_db] = lambda: db_session
-    app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
-    monkeypatch.setattr(settings, "is_vercel", True)
-    monkeypatch.setattr(settings, "processing_mode", "queue")
-    monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
-
-    with patch("backend.app.routers.uploads.stage_upload_content") as stage_mock, patch(
-        "backend.app.routers.uploads.enqueue_upload_processing",
-        return_value="task-1",
-    ):
-        try:
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/v1/uploads",
-                    files=[("files", ("nota-fiscal.txt", b"conteudo de teste", "text/plain"))],
-                )
-        finally:
-            app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    saved_upload = db_session.scalar(select(Upload))
-    assert saved_upload is not None
-    stage_mock.assert_called_once_with(saved_upload.id, b"conteudo de teste")
-
-
-def test_upload_marks_error_when_enqueue_fails(
+def test_upload_marks_error_when_processing_fails(
     db_session, upload_storage_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     app.dependency_overrides[get_db] = lambda: db_session
@@ -109,8 +99,8 @@ def test_upload_marks_error_when_enqueue_fails(
     )
 
     with patch(
-        "backend.app.routers.uploads.enqueue_upload_processing",
-        side_effect=RuntimeError("Redis down"),
+        "backend.app.services.document_processing_service.extract_document_data",
+        side_effect=RuntimeError("OpenRouter down"),
     ):
         try:
             with TestClient(app) as client:
@@ -136,7 +126,7 @@ def test_upload_marks_error_when_enqueue_fails(
     assert audit_log.payload == {
         "upload_id": str(saved_upload.id),
         "arquivo": "nota-fiscal.txt",
-        "erro": "Falha ao enfileirar processamento: Redis down",
+        "erro": "OpenRouter down",
     }
 
 
@@ -147,21 +137,10 @@ def test_upload_sync_mode_processes_file_immediately(
     app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
     monkeypatch.setattr(settings, "processing_mode", "sync")
     monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
-    monkeypatch.setattr(
+    with patch(
         "backend.app.services.document_processing_service.extract_document_data",
-        lambda _content: DocumentExtractionResult(
-            numero_nf="NF-2026-001",
-            cnpj_emitente="11.222.333/0001-81",
-            cnpj_destinatario="22.333.444/0001-55",
-            data_emissao=date(2026, 4, 10),
-            data_pagamento=date(2026, 4, 11),
-            valor_total=Decimal("321.45"),
-            aprovador="Maria Silva",
-            descricao="Servico de auditoria",
-        ),
-    )
-
-    with patch("backend.app.routers.uploads.enqueue_upload_processing") as enqueue_mock:
+        return_value=build_extraction_result(),
+    ):
         try:
             with TestClient(app) as client:
                 response = client.post(
@@ -175,7 +154,6 @@ def test_upload_sync_mode_processes_file_immediately(
     payload = response.json()
     assert len(payload["items"]) == 1
     assert payload["items"][0]["status"] == "concluido"
-    enqueue_mock.assert_not_called()
 
     saved_upload = db_session.scalar(select(Upload))
     assert saved_upload is not None
@@ -194,15 +172,14 @@ def test_upload_persists_error_record_when_txt_is_not_utf8(
     app.dependency_overrides[get_upload_storage_dir] = lambda: upload_storage_dir
     monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
 
-    with patch("backend.app.routers.uploads.enqueue_upload_processing") as enqueue_mock:
-        try:
-            with TestClient(app) as client:
-                response = client.post(
-                    "/api/v1/uploads",
-                    files=[("files", ("nota-fiscal.txt", b"\xff\xfe\x00\x00", "text/plain"))],
-                )
-        finally:
-            app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/uploads",
+                files=[("files", ("nota-fiscal.txt", b"\xff\xfe\x00\x00", "text/plain"))],
+            )
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert response.json()["items"][0]["status"] == "erro"
@@ -211,7 +188,6 @@ def test_upload_persists_error_record_when_txt_is_not_utf8(
     assert saved_upload is not None
     assert saved_upload.status == "erro"
     assert db_session.scalar(select(Documento)) is None
-    enqueue_mock.assert_not_called()
 
     audit_log = db_session.scalar(select(AuditLog))
     assert audit_log is not None
@@ -230,11 +206,8 @@ def test_upload_persists_successful_and_failed_files_in_same_batch(
     monkeypatch.setattr(Path, "write_bytes", lambda self, data: len(data))
 
     with patch(
-        "backend.app.routers.uploads.enqueue_upload_processing",
-        side_effect=[
-            "task-1",
-            RuntimeError("Redis down"),
-        ],
+        "backend.app.services.document_processing_service.extract_document_data",
+        side_effect=[build_extraction_result(), RuntimeError("OpenRouter down")],
     ):
         try:
             with TestClient(app) as client:
@@ -249,12 +222,12 @@ def test_upload_persists_successful_and_failed_files_in_same_batch(
             app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert [item["status"] for item in response.json()["items"]] == ["pendente", "erro"]
+    assert [item["status"] for item in response.json()["items"]] == ["concluido", "erro"]
 
     uploads = db_session.scalars(select(Upload).order_by(Upload.nome_arquivo.asc())).all()
     assert [upload.nome_arquivo for upload in uploads] == ["nota-erro.txt", "nota-ok.txt"]
-    assert [upload.status for upload in uploads] == ["erro", "pendente"]
-    assert db_session.scalar(select(Documento)) is None
+    assert [upload.status for upload in uploads] == ["erro", "concluido"]
+    assert db_session.scalars(select(Documento)).all()
 
 
 def test_upload_zip_with_txts_expands_into_multiple_uploads(
@@ -273,9 +246,9 @@ def test_upload_zip_with_txts_expands_into_multiple_uploads(
     )
 
     with patch(
-        "backend.app.routers.uploads.enqueue_upload_processing",
-        side_effect=["task-1", "task-2"],
-    ) as enqueue_mock:
+        "backend.app.services.document_processing_service.extract_document_data",
+        return_value=build_extraction_result(),
+    ):
         try:
             with TestClient(app) as client:
                 response = client.post(
@@ -288,13 +261,12 @@ def test_upload_zip_with_txts_expands_into_multiple_uploads(
     assert response.status_code == 200
     payload = response.json()
     assert [item["nome_arquivo"] for item in payload["items"]] == ["nota-1.txt", "lote/nota-2.txt"]
-    assert [item["status"] for item in payload["items"]] == ["pendente", "pendente"]
+    assert [item["status"] for item in payload["items"]] == ["concluido", "concluido"]
 
     uploads = db_session.scalars(select(Upload).order_by(Upload.nome_arquivo.asc())).all()
     assert [upload.nome_arquivo for upload in uploads] == ["lote/nota-2.txt", "nota-1.txt"]
     assert all(upload.caminho_arquivo.endswith(".txt") for upload in uploads)
-    assert db_session.scalar(select(Documento)) is None
-    assert enqueue_mock.call_count == 2
+    assert db_session.scalars(select(Documento)).all()
 
 
 def test_upload_zip_sem_txt_retorna_400(db_session, upload_storage_dir: Path) -> None:

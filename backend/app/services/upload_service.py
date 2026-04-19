@@ -11,7 +11,6 @@ from ..database import DbSession
 from ..models.documento import Documento
 from ..models.upload import Upload
 from .audit_service import log_audit_event
-from .upload_queue_payload_service import delete_staged_upload_content
 
 
 class UploadNotFoundError(LookupError):
@@ -76,7 +75,6 @@ def delete_upload(
     db.flush()
     db.delete(upload)
     db.commit()
-    delete_staged_upload_content(upload.id)
 
     try:
         file_path.unlink()
@@ -99,12 +97,10 @@ def delete_all_uploads(
         return 0
 
     file_paths: list[Path] = []
-    upload_ids: list[UUID] = []
     deleted_count = 0
 
     for upload in uploads:
         file_paths.append(Path(upload.caminho_arquivo))
-        upload_ids.append(upload.id)
         db.delete(upload)
         deleted_count += 1
 
@@ -120,9 +116,6 @@ def delete_all_uploads(
     )
     db.flush()
     db.commit()
-
-    for upload_id in upload_ids:
-        delete_staged_upload_content(upload_id)
 
     for file_path in file_paths:
         try:
