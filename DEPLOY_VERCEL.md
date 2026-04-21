@@ -1,19 +1,19 @@
 # Deploy na Vercel com Supabase
 
-Este projeto possui um caminho de deploy compativel com a Vercel para o backend FastAPI.
+Este projeto possui um caminho de deploy compatível com a Vercel para o backend FastAPI.
 
 ## Resumo da arquitetura na Vercel
 
-- o backend roda como uma unica Vercel Function Python
-- o frontend continua sendo servido pelo proprio FastAPI
-- o processamento de uploads roda de forma sincrona dentro da propria request
-- a function nao executa `create_all()` na Vercel; schema deve existir previamente no banco persistente
-- o Supabase fornece o Postgres persistente usado pela aplicacao
-- sem um banco persistente configurado, o deploy falha ao iniciar em vez de cair em SQLite temporario
+- o backend roda como uma única Vercel Function Python
+- o frontend continua sendo servido pelo próprio FastAPI
+- o processamento de uploads roda de forma síncrona dentro da própria request
+- a function não executa `create_all()` na Vercel; schema deve existir previamente no banco persistente
+- o Supabase fornece o Postgres persistente usado pela aplicação
+- sem um banco persistente configurado, o deploy falha ao iniciar em vez de cair em SQLite temporário
 
-## Diferenca em relacao ao ambiente local
+## Diferença em relação ao ambiente local
 
-No ambiente local com `docker compose`, o fluxo continua sincrono:
+No ambiente local com `docker compose`, o fluxo continua síncrono:
 
 - API FastAPI
 - PostgreSQL
@@ -24,17 +24,17 @@ Na Vercel, o projeto entra automaticamente em modo `sync`:
 DOC_AUDIT_PROCESSING_MODE=sync
 ```
 
-Esse modo e o recomendado para a Vercel. O upload processa o arquivo na propria request, grava o registro e persiste o resultado sem depender de worker externo ou Redis.
+Esse modo é o recomendado para a Vercel. O upload processa o arquivo na própria request, grava o registro e persiste o resultado sem depender de worker externo ou Redis.
 
-## Pre-requisitos
+## Pré-requisitos
 
 1. Conta na Vercel
-2. Integracao Supabase provisionada no projeto
+2. Integração Supabase provisionada no projeto
 3. Chave da OpenRouter
 
-## Integracoes esperadas
+## Integrações esperadas
 
-O projeto deve exibir as integracoes abaixo:
+O projeto deve exibir as integrações abaixo:
 
 ```bash
 vercel integration ls
@@ -42,11 +42,11 @@ vercel integration ls
 
 Resultado esperado:
 
-- `supabase` para Postgres e env vars publicos/privados do workspace Supabase
+- `supabase` para Postgres e env vars públicos/privados do workspace Supabase
 
-## Variaveis de ambiente
+## Variáveis de ambiente
 
-As integracoes devem provisionar automaticamente variaveis como:
+As integrações devem provisionar automaticamente variáveis como:
 
 ```env
 POSTGRES_URL=postgresql://...
@@ -67,7 +67,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 SUPABASE_JWT_SECRET=...
 ```
 
-Configure manualmente pelo menos estas variaveis de aplicacao:
+Configure manualmente pelo menos estas variáveis de aplicação:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -80,21 +80,21 @@ UPLOAD_MAX_FILES=5
 ```
 
 O backend aceita automaticamente `DATABASE_URL`, `POSTGRES_URL`,
-`POSTGRES_URL_NON_POOLING` e `POSTGRES_PRISMA_URL`. Com a integracao Supabase,
+`POSTGRES_URL_NON_POOLING` e `POSTGRES_PRISMA_URL`. Com a integração Supabase,
 o deploy normalmente recebe `POSTGRES_URL` e `POSTGRES_URL_NON_POOLING`
-automaticamente, sem exigir duplicacao manual para `DATABASE_URL`.
-O resolver de configuracao prefere `POSTGRES_URL_NON_POOLING` quando ele esta
-disponivel, porque esse e o caminho mais previsivel para conexoes persistentes em
+automaticamente, sem exigir duplicação manual para `DATABASE_URL`.
+O resolver de configuração prefere `POSTGRES_URL_NON_POOLING` quando ele está
+disponível, porque esse é o caminho mais previsível para conexões persistentes em
 ambientes serverless.
-As conexoes `postgresql+psycopg` desabilitam prepared statements automaticos
+As conexões `postgresql+psycopg` desabilitam prepared statements automáticos
 (`prepare_threshold=None`) para evitar erros de compatibilidade com poolers
 serverless, como os usados por Supabase/Vercel.
 
-`DOC_AUDIT_AUTO_CREATE_SCHEMA=false` e o padrao recomendado na Vercel. Em ambiente serverless,
-o startup da function nao deve executar DDL automaticamente; use migrations ou outro processo
+`DOC_AUDIT_AUTO_CREATE_SCHEMA=false` é o padrão recomendado na Vercel. Em ambiente serverless,
+o startup da function não deve executar DDL automaticamente; use migrations ou outro processo
 controlado para preparar o schema antes de publicar.
 
-Se voce nao usar a integracao do Marketplace, defina manualmente uma destas opcoes:
+Se você não usar a integração do Marketplace, defina manualmente uma destas opções:
 
 ```env
 DATABASE_URL=postgresql+psycopg://...
@@ -102,14 +102,14 @@ DATABASE_URL=postgresql+psycopg://...
 POSTGRES_URL_NON_POOLING=postgresql://...
 ```
 
-Se nenhuma dessas variaveis estiver definida, a aplicacao aborta a inicializacao na Vercel.
+Se nenhuma dessas variáveis estiver definida, a aplicação aborta a inicialização na Vercel.
 
-`UPLOAD_MAX_FILES=5` continua sendo uma recomendacao pratica para evitar requests longas demais,
-mesmo com processamento sincrono.
-O frontend web divide selecoes maiores em varias requisicoes sequenciais, respeitando esse limite por request.
+`UPLOAD_MAX_FILES=5` continua sendo uma recomendação prática para evitar requests longas demais,
+mesmo com processamento síncrono.
+O frontend web divide seleções maiores em várias requisições sequenciais, respeitando esse limite por request.
 
-Depois de adicionar ou alterar env vars na Vercel, faca um novo deploy.
-O deployment em execucao nao passa a enxergar variaveis criadas depois que ele foi publicado.
+Depois de adicionar ou alterar env vars na Vercel, faça um novo deploy.
+O deployment em execução não passa a enxergar variáveis criadas depois que ele foi publicado.
 
 ## Comandos de deploy
 
@@ -119,7 +119,7 @@ vercel env pull .env.local --yes
 vercel --prod
 ```
 
-Para diagnostico rapido:
+Para diagnóstico rápido:
 
 ```bash
 vercel integration ls
@@ -127,18 +127,18 @@ vercel env ls
 vercel logs --environment production --since 1h --level error --expand
 ```
 
-## Validacao apos deploy
+## Validação após deploy
 
 1. Acesse `/api/v1/health`
 2. Confirme `database: ok`
 3. Confirme `processing_mode: sync`
 4. Confirme `ai: ok`
-5. Faca upload de poucos arquivos por vez
-6. Valide a exportacao CSV/Excel
+5. Faça upload de poucos arquivos por vez
+6. Valide a exportação CSV/Excel
 
-## Arquivos de configuracao
+## Arquivos de configuração
 
 - `index.py`: entrypoint FastAPI para a Vercel
-- `requirements.txt`: dependencias de runtime no root
-- `vercel.json`: configuracao da function Python
+- `requirements.txt`: dependências de runtime no root
+- `vercel.json`: configuração da function Python
 - `.python-version`: pin de Python
